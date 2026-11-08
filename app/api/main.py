@@ -5,6 +5,7 @@
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.agent.diagnostic import diagnose_pipeline
 from app.tools.incident_tool import (
     approve_ticket,
     request_ticket_creation,
@@ -151,3 +152,18 @@ def approve_ticket_endpoint(
             status_code=409,
             detail=str(exc),
         ) from exc
+
+
+@app.get("/diagnostics/pipelines/{pipeline_id}")
+def read_pipeline_diagnosis(pipeline_id: str) -> dict:
+    """Execute a deterministic pipeline diagnosis."""
+
+    result = diagnose_pipeline(pipeline_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Pipeline not found",
+        )
+
+    return result
