@@ -1,0 +1,54 @@
+
+[
+  {
+    "runbook_id": "RB-001",
+    "error_code": "SCHEMA_VALIDATION_ERROR",
+    "title": "ETL Schema Validation Failure",
+    "version": "1.0.0",
+    "severity": "HIGH",
+    "description": "The input data schema does not match the expected pipeline schema.",
+    "diagnostic_steps": [
+      "Inspect the latest pipeline execution logs.",
+      "Compare source and expected schemas.",
+      "Identify missing fields or incompatible data types.",
+      "Validate the transformation configuration.",
+      "Test the corrected schema on a sample dataset."
+    ],
+    "human_approval_required": true,
+    "source": "data/runbooks.json"
+  },
+  {
+    "runbook_id": "RB-002",
+    "error_code": "HIGH_LATENCY",
+    "title": "ML Inference High Latency",
+    "version": "1.0.0",
+    "severity": "MEDIUM",
+    "description": "The ML inference service has unusually high response times.",
+    "diagnostic_steps": [
+      "Inspect average latency and P95 latency.",
+      "Review CPU and memory utilization.",
+      "Check the number of concurrent requests.",
+      "Investigate slow preprocessing operations.",
+      "Compare latency against the reference baseline."
+    ],
+    "human_approval_required": false,
+    "source": "data/runbooks.json"
+  },
+  {
+    "runbook_id": "RB-003",
+    "error_code": "MISSING_VALUES",
+    "title": "Data Quality: Missing Values",
+    "version": "1.0.0",
+    "severity": "MEDIUM",
+    "description": "The incoming dataset contains unexpected missing values.",
+    "diagnostic_steps": [
+      "Calculate the missing-value rate for each feature.",
+      "Compare the rates with the reference dataset.",
+      "Identify recent changes in upstream data sources.",
+      "Review the preprocessing and imputation rules.",
+      "Escalate if the missing values affect critical features."
+    ],
+    "human_approval_required": false,
+    "source": "data/runbooks.json"
+  }
+]

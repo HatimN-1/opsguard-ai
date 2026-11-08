@@ -1,0 +1,30 @@
+
+[
+  {
+    "pipeline_id": "etl_orders_daily",
+    "name": "Daily Orders ETL",
+    "status": "FAILED",
+    "last_run": "2026-11-08T08:30:00Z",
+    "records_processed": 1500,
+    "invalid_records": 245,
+    "error_code": "SCHEMA_VALIDATION_ERROR"
+  },
+  {
+    "pipeline_id": "etl_customers_daily",
+    "name": "Daily Customers ETL",
+    "status": "SUCCESS",
+    "last_run": "2026-11-08T08:15:00Z",
+    "records_processed": 3200,
+    "invalid_records": 0,
+    "error_code": null
+  },
+  {
+    "pipeline_id": "etl_payments_hourly",
+    "name": "Hourly Payments ETL",
+    "status": "RUNNING",
+    "last_run": "2026-11-08T09:00:00Z",
+    "records_processed": 620,
+    "invalid_records": 0,
+    "error_code": null
+  }
+]

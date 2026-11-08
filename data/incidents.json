@@ -1,0 +1,17 @@
+
+[
+  {
+    "incident_id": "INC-001",
+    "source": "pipeline",
+    "resource_id": "etl_orders_daily",
+    "severity": "HIGH",
+    "description": "Schema validation error in the orders ETL."
+  },
+  {
+    "incident_id": "INC-002",
+    "source": "model",
+    "resource_id": "fraud_detection_v1",
+    "severity": "MEDIUM",
+    "description": "Prediction request errors observed in simulated monitoring."
+  }
+]

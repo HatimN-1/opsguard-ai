@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE and local configuration
+.vscode/
+.idea/
+.env
+.env.*
+!.env.example
+
+# Local data and outputs
+mlruns/
+mlartifacts/
+outputs/
+*.db
+*.sqlite3
