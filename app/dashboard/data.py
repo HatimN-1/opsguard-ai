@@ -293,46 +293,58 @@ def filter_traces(
 # Aggregate observability metrics
 # ---------------------------------------------------------------------
 
+
 def summarize_traces(
     events: list[dict],
 ) -> dict:
-    """Calculate aggregate observability metrics."""
-
-    # -------------------------------------------------------------
-    # Count agent execution statuses
-    # -------------------------------------------------------------
+    """Calculate execution and tool-outcome metrics."""
 
     statuses = Counter(
         event["status"]
         for event in events
     )
 
-    # -------------------------------------------------------------
-    # Count tool calls
-    #
-    # Includes successful and rejected attempts.
-    # -------------------------------------------------------------
+    # Count successful and failed tool calls separately.
+    tool_outcomes: dict[str, dict[str, int]] = {}
 
-    tools = Counter(
-        item["tool"]
-        for event in events
-        for item in event["tools_used"]
-        if item["tool"]
+    for event in events:
+        for item in event["tools_used"]:
+            name = item.get("tool")
+
+            if not name:
+                continue
+
+            if name not in tool_outcomes:
+                tool_outcomes[name] = {
+                    "success": 0,
+                    "failed": 0,
+                }
+
+            outcome = (
+                "success"
+                if item.get("ok") is True
+                else "failed"
+            )
+
+            tool_outcomes[name][outcome] += 1
+
+    tool_successes = sum(
+        counts["success"]
+        for counts in tool_outcomes.values()
     )
 
-    # -------------------------------------------------------------
-    # Count rejected or failed tool calls
-    # -------------------------------------------------------------
-
-    errors = sum(
-        item["ok"] is False
-        for event in events
-        for item in event["tools_used"]
+    tool_errors = sum(
+        counts["failed"]
+        for counts in tool_outcomes.values()
     )
 
-    # -------------------------------------------------------------
-    # Collect valid latencies
-    # -------------------------------------------------------------
+    tool_calls = tool_successes + tool_errors
+
+    error_rate = (
+        round(100 * tool_errors / tool_calls, 2)
+        if tool_calls
+        else None
+    )
 
     durations = [
         event["latency_ms"]
@@ -340,39 +352,28 @@ def summarize_traces(
         if event["latency_ms"] is not None
     ]
 
-    # -------------------------------------------------------------
-    # Build dashboard summary
-    # -------------------------------------------------------------
-
     return {
         "total_runs": len(events),
-        "completed_runs": (
-            statuses["completed"]
-        ),
+        "completed_runs": statuses["completed"],
         "non_completed_runs": (
-            len(events)
-            - statuses["completed"]
+            len(events) - statuses["completed"]
         ),
-        "tool_calls": sum(
-            tools.values()
-        ),
-        "tool_errors": errors,
+        "tool_calls": tool_calls,
+        "tool_successes": tool_successes,
+        "tool_errors": tool_errors,
+        "tool_error_rate_pct": error_rate,
         "mean_latency_ms": (
-            round(
-                mean(durations),
-                2,
-            )
+            round(mean(durations), 2)
             if durations
             else None
         ),
-        "status_counts": dict(
-            statuses
-        ),
-        "tool_counts": dict(
-            tools
-        ),
+        "status_counts": dict(statuses),
+        "tool_counts": {
+            name: counts["success"] + counts["failed"]
+            for name, counts in tool_outcomes.items()
+        },
+        "tool_outcomes": dict(sorted(tool_outcomes.items())),
     }
-
 
 # ---------------------------------------------------------------------
 # Load local evaluation reports

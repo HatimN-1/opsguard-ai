@@ -263,3 +263,108 @@ def test_filter_traces_by_mode_status_and_tool():
             mode="invalid_mode",
         )
 
+
+def test_tool_outcomes_and_error_rate():
+    events = [
+        {
+            "status": "completed",
+            "latency_ms": 1000.0,
+            "tools_used": [
+                {
+                    "tool": "get_pipeline_status",
+                    "ok": True,
+                },
+                {
+                    "tool": "search_runbook",
+                    "ok": False,
+                    "error": "NOT_FOUND",
+                },
+            ],
+        },
+        {
+            "status": "completed",
+            "latency_ms": 2000.0,
+            "tools_used": [
+                {
+                    "tool": "get_pipeline_status",
+                    "ok": False,
+                    "error": "INVALID_ARGUMENTS",
+                },
+            ],
+        },
+    ]
+
+    summary = summarize_traces(events)
+
+    assert summary["tool_calls"] == 3
+    assert summary["tool_successes"] == 1
+    assert summary["tool_errors"] == 2
+    assert summary["tool_error_rate_pct"] == 66.67
+
+    assert summary["tool_outcomes"] == {
+        "get_pipeline_status": {
+            "success": 1,
+            "failed": 1,
+        },
+        "search_runbook": {
+            "success": 0,
+            "failed": 1,
+        },
+    }
+
+
+def test_error_rate_without_tool_calls():
+    events = [
+        {
+            "status": "completed",
+            "latency_ms": 1500.0,
+            "tools_used": [],
+        },
+    ]
+
+    summary = summarize_traces(events)
+
+    assert summary["tool_calls"] == 0
+    assert summary["tool_successes"] == 0
+    assert summary["tool_errors"] == 0
+    assert summary["tool_error_rate_pct"] is None
+    assert summary["tool_outcomes"] == {}
+
+
+def test_filtered_traces_update_tool_error_rate():
+    events = [
+        {
+            "execution_mode": "local_ollama",
+            "status": "completed",
+            "latency_ms": 20000.0,
+            "tools_used": [
+                {
+                    "tool": "get_pipeline_status",
+                    "ok": True,
+                },
+            ],
+        },
+        {
+            "execution_mode": "injected_client",
+            "status": "completed",
+            "latency_ms": 0.5,
+            "tools_used": [
+                {
+                    "tool": "delete_everything",
+                    "ok": False,
+                },
+            ],
+        },
+    ]
+
+    filtered = filter_traces(
+        events,
+        mode="local_ollama",
+    )
+
+    summary = summarize_traces(filtered)
+
+    assert summary["total_runs"] == 1
+    assert summary["tool_successes"] == 1
+    assert summary["tool_errors"] == 0
+    assert summary["tool_error_rate_pct"] == 0.0
