@@ -4,6 +4,7 @@
 import math
 import re
 
+from app.agent.response_guard import detect_contradictions
 from app.agent.response_quality import detect_language
 
 
@@ -141,13 +142,28 @@ def compose_grounded_answer(
         + "\n".join(f"- {fact}" for fact in facts)
     )
 
+    
     if detect_language(generated_answer) == "fr":
+        issues = detect_contradictions(
+            generated_answer,
+            tool_results,
+        )
+
+        if issues:
+            return (
+                verified_section
+                + "\n\nL'analyse générée a été masquée "
+                "car une contradiction potentielle "
+                "a été détectée."
+            )
+
         return (
             verified_section
             + "\n\nAnalyse générée par le modèle "
             "(à vérifier) :\n"
             + generated_answer
         )
+
 
     return (
         verified_section

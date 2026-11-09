@@ -11,8 +11,11 @@ FRENCH_WORDS = {
     "ces", "donnees", "erreur", "echec",
     "echoue", "reussi", "succes",
     "verifier", "procedure", "metriques",
-    "correspondant", "probleme",
+    "correspondant", "probleme",  
+    "analyse", "consulte", "quel", "quelle",
+    "pourquoi", "comment", "son", "ses",
 }
+
 
 ENGLISH_WORDS = {
     "the", "and", "for", "with", "from",
