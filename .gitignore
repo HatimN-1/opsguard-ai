@@ -20,3 +20,5 @@ mlartifacts/
 outputs/
 *.db
 *.sqlite3
+# Local agent execution traces
+logs/

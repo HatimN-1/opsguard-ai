@@ -1,0 +1,28 @@
+
+[
+  {
+    "id": "EVAL-001",
+    "name": "Diagnostic ETL avec runbook",
+    "question": "Analyse le pipeline etl_orders_daily et consulte le runbook correspondant à son erreur.",
+    "expected_tools": [
+      "get_pipeline_status",
+      "search_runbook"
+    ]
+  },
+  {
+    "id": "EVAL-002",
+    "name": "Vérification pipeline sain",
+    "question": "Quel est le statut du pipeline etl_customers_daily ? Consulte ses informations.",
+    "expected_tools": [
+      "get_pipeline_status"
+    ]
+  },
+  {
+    "id": "EVAL-003",
+    "name": "Monitoring modèle ML",
+    "question": "Consulte les métriques du modèle fraud_detection_v1 et explique son état.",
+    "expected_tools": [
+      "get_model_metrics"
+    ]
+  }
+]

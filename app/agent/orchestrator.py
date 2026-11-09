@@ -2,6 +2,7 @@
 """Controlled LLM tool-calling orchestrator for OpsGuard AI."""
 
 import json
+from time import perf_counter
 from typing import Any
 
 from httpx import HTTPError
@@ -12,6 +13,7 @@ from app.agent.llm_client import (
     OLLAMA_MODEL,
     SYSTEM_PROMPT,
 )
+from app.agent.observability import record_agent_trace
 from app.agent.tool_registry import TOOL_SCHEMAS, execute_tool
 
 MAX_TOOL_CALLS = 4
@@ -86,7 +88,7 @@ def _result(
     }
 
 
-def run_agent(
+def _run_agent_impl(
     question: str,
     *,
     client: Client | None = None,
@@ -198,6 +200,29 @@ def run_agent(
             f"Ollama request failed: {type(exc).__name__}",
             trace,
         )
+
+def run_agent(
+    question: str,
+    *,
+    client: Client | None = None,
+    max_steps: int = 3,
+) -> dict:
+    """Run the agent and record its execution trace."""
+
+    start = perf_counter()
+
+    result = _run_agent_impl(
+        question,
+        client=client,
+        max_steps=max_steps,
+    )
+
+    elapsed_ms = (perf_counter() - start) * 1000
+
+    return record_agent_trace(
+        result,
+        elapsed_ms,
+    )
 
 
 if __name__ == "__main__":
