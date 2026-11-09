@@ -7,7 +7,15 @@
     "expected_tools": [
       "get_pipeline_status",
       "search_runbook"
-    ]
+    ],
+    "expected_arguments": {
+      "get_pipeline_status": {
+        "pipeline_id": "etl_orders_daily"
+      },
+      "search_runbook": {
+        "error_code": "SCHEMA_VALIDATION_ERROR"
+      }
+    }
   },
   {
     "id": "EVAL-002",
@@ -15,7 +23,12 @@
     "question": "Quel est le statut du pipeline etl_customers_daily ? Consulte ses informations.",
     "expected_tools": [
       "get_pipeline_status"
-    ]
+    ],
+    "expected_arguments": {
+      "get_pipeline_status": {
+        "pipeline_id": "etl_customers_daily"
+      }
+    }
   },
   {
     "id": "EVAL-003",
@@ -23,6 +36,11 @@
     "question": "Consulte les métriques du modèle fraud_detection_v1 et explique son état.",
     "expected_tools": [
       "get_model_metrics"
-    ]
+    ],
+    "expected_arguments": {
+      "get_model_metrics": {
+        "model_id": "fraud_detection_v1"
+      }
+    }
   }
 ]

@@ -2,6 +2,7 @@
 """Controlled LLM tool-calling orchestrator for OpsGuard AI."""
 
 import json
+from collections.abc import Callable
 from time import perf_counter
 from typing import Any
 
@@ -88,11 +89,15 @@ def _result(
     }
 
 
+
 def _run_agent_impl(
     question: str,
     *,
     client: Client | None = None,
     max_steps: int = 3,
+    tool_observer: Callable[
+        [str, dict[str, Any]], None
+    ] | None = None,
 ) -> dict:
     """Execute bounded, validated LLM tool-calling turns."""
 
@@ -162,6 +167,14 @@ def _run_agent_impl(
                             "tool": name,
                             "error": "TOOL_EXECUTION_ERROR",
                         }
+                
+                if tool_observer is not None:
+                    tool_observer(
+                        name,
+                        arguments.copy()
+                        if isinstance(arguments, dict)
+                        else {},
+                    )
 
                 trace.append({
                     "tool": name,
@@ -201,11 +214,15 @@ def _run_agent_impl(
             trace,
         )
 
+
 def run_agent(
     question: str,
     *,
     client: Client | None = None,
     max_steps: int = 3,
+    tool_observer: Callable[
+        [str, dict[str, Any]], None
+    ] | None = None,
 ) -> dict:
     """Run the agent and record its execution trace."""
 
@@ -215,6 +232,7 @@ def run_agent(
         question,
         client=client,
         max_steps=max_steps,
+        tool_observer=tool_observer,
     )
 
     elapsed_ms = (perf_counter() - start) * 1000
@@ -223,6 +241,7 @@ def run_agent(
         result,
         elapsed_ms,
     )
+
 
 
 if __name__ == "__main__":

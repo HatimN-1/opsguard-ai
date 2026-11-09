@@ -132,3 +132,36 @@ def test_ticket_is_proposal_only():
 def test_empty_question_rejected():
     with pytest.raises(ValueError):
         run_agent("   ")
+
+
+def test_tool_observer_receives_arguments():
+    observed = []
+
+    client = FakeClient([
+        fake_response(calls=[
+            (
+                "get_pipeline_status",
+                {"pipeline_id": "etl_orders_daily"},
+            ),
+        ]),
+        fake_response("Diagnostic completed."),
+    ])
+
+    result = run_agent(
+        "Diagnose etl_orders_daily",
+        client=client,
+        tool_observer=lambda name, args: observed.append(
+            (name, args)
+        ),
+    )
+
+    assert result["status"] == "completed"
+
+    assert observed == [
+        (
+            "get_pipeline_status",
+            {"pipeline_id": "etl_orders_daily"},
+        )
+    ]
+
+    assert "arguments" not in result["tools_used"][0]

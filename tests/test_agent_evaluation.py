@@ -71,3 +71,60 @@ def test_invalid_repeat_count():
             [CASE],
             repeats=0,
         )
+
+
+def test_wrong_tool_arguments_are_rejected():
+    case = {
+        **CASE,
+        "expected_arguments": {
+            "get_pipeline_status": {
+                "pipeline_id": "etl_orders_daily",
+            },
+        },
+    }
+
+    def fake_runner(question, *, tool_observer):
+        tool_observer(
+            "get_pipeline_status",
+            {"pipeline_id": "etl_customers_daily"},
+        )
+        return make_response(["get_pipeline_status"])
+
+    report = evaluate_cases(
+        [case],
+        repeats=1,
+        agent_runner=fake_runner,
+    )
+
+    assert report["passed_runs"] == 0
+    assert report["results"][0]["arguments_match"] is False
+    assert report["results"][0][
+        "incorrect_argument_tools"
+    ] == ["get_pipeline_status"]
+
+
+def test_correct_tool_arguments_are_accepted():
+    case = {
+        **CASE,
+        "expected_arguments": {
+            "get_pipeline_status": {
+                "pipeline_id": "etl_orders_daily",
+            },
+        },
+    }
+
+    def fake_runner(question, *, tool_observer):
+        tool_observer(
+            "get_pipeline_status",
+            {"pipeline_id": "etl_orders_daily"},
+        )
+        return make_response(["get_pipeline_status"])
+
+    report = evaluate_cases(
+        [case],
+        repeats=1,
+        agent_runner=fake_runner,
+    )
+
+    assert report["passed_runs"] == 1
+    assert report["results"][0]["arguments_match"] is True
