@@ -3,9 +3,10 @@
 #-----------------------------------------------------------------------------
 
 from fastapi import FastAPI, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.diagnostic import diagnose_pipeline
+from app.agent.orchestrator import run_agent
 from app.tools.incident_tool import (
     approve_ticket,
     request_ticket_creation,
@@ -164,6 +165,32 @@ def read_pipeline_diagnosis(pipeline_id: str) -> dict:
         raise HTTPException(
             status_code=404,
             detail="Pipeline not found",
+        )
+
+    return result
+
+
+class AgentChatRequest(BaseModel):
+    """Validated natural-language request for the MLOps agent."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    question: str = Field(
+        min_length=1,
+        max_length=2000,
+    )
+
+
+@app.post("/agent/chat")
+def agent_chat(payload: AgentChatRequest) -> dict:
+    """Run the local, bounded LLM agent."""
+
+    result = run_agent(payload.question)
+
+    if result["status"] == "llm_error":
+        raise HTTPException(
+            status_code=503,
+            detail="Local LLM service unavailable",
         )
 
     return result
