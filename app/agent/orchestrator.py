@@ -18,12 +18,15 @@ from app.agent.llm_client import (
 from app.agent.observability import record_agent_trace
 from app.agent.tool_registry import TOOL_SCHEMAS, execute_tool
 
-# Maximum number of tool executions per agent request.
+# ---------------------------------------------------------------------
+# Agent execution limits
+# ---------------------------------------------------------------------
+
 MAX_TOOL_CALLS = 4
 
 
 # ---------------------------------------------------------------------
-# Agent instructions
+# System prompt and safety instructions
 # ---------------------------------------------------------------------
 
 AGENT_PROMPT = SYSTEM_PROMPT + """
@@ -128,10 +131,14 @@ def _run_agent_impl(
     # -------------------------------------------------------------
 
     if not isinstance(question, str) or not question.strip():
-        raise ValueError("Question cannot be empty")
+        raise ValueError(
+            "Question cannot be empty"
+        )
 
     if len(question) > 2000:
-        raise ValueError("Question is too long")
+        raise ValueError(
+            "Question is too long"
+        )
 
     if not 1 <= max_steps <= 3:
         raise ValueError(
@@ -148,6 +155,10 @@ def _run_agent_impl(
             timeout=180.0,
         )
 
+    # -------------------------------------------------------------
+    # Conversation context
+    # -------------------------------------------------------------
+
     messages: list[Any] = [
         {
             "role": "system",
@@ -159,15 +170,16 @@ def _run_agent_impl(
         },
     ]
 
-    # Public tool trace: names, success and error codes only.
+    # Safe public trace:
+    # tool names, success flags and error codes.
     trace: list[dict] = []
 
-    # Private execution data kept in memory for grounding.
-    # These results are not added to JSONL logs.
+    # Successful tool results kept in memory for grounding.
+    # Their contents are not written to JSONL logs.
     tool_results: list[dict] = []
 
     # -------------------------------------------------------------
-    # Main tool-calling loop
+    # Bounded agent execution
     # -------------------------------------------------------------
 
     try:
@@ -180,13 +192,17 @@ def _run_agent_impl(
             )
 
             message = response.message
-            calls = message.tool_calls or []
+
+            calls = (
+                message.tool_calls or []
+            )
 
             # -----------------------------------------------------
-            # Case 1: The model returns a final answer
+            # Case 1: Model produces a final answer
             # -----------------------------------------------------
 
             if not calls:
+
                 answer = (
                     message.content or ""
                 ).strip()
@@ -197,7 +213,8 @@ def _run_agent_impl(
                     else "empty_response"
                 )
 
-                # Add verified facts from successful tools.
+                # Ground the response in verified tool data
+                # and apply contradiction safeguards.
                 if answer:
                     answer = compose_grounded_answer(
                         question,
@@ -212,30 +229,42 @@ def _run_agent_impl(
                 )
 
             # -----------------------------------------------------
-            # Enforce the maximum number of tool calls
+            # Maximum number of tool calls
             # -----------------------------------------------------
 
             if len(trace) + len(calls) > MAX_TOOL_CALLS:
+
                 return _result(
                     "limit_reached",
                     "Maximum tool call limit reached.",
                     trace,
                 )
 
-            # Preserve the assistant message with tool calls.
+            # Add the assistant message with its tool requests.
             messages.append(message)
 
             # -----------------------------------------------------
-            # Execute the requested tools
+            # Execute requested tools
             # -----------------------------------------------------
 
             for call in calls:
 
-                name = call.function.name
-                arguments = call.function.arguments
+                name = (
+                    call.function.name
+                )
 
-                # Reject malformed arguments.
-                if not isinstance(arguments, dict):
+                arguments = (
+                    call.function.arguments
+                )
+
+                # -------------------------------------------------
+                # Validate argument structure
+                # -------------------------------------------------
+
+                if not isinstance(
+                    arguments,
+                    dict,
+                ):
                     result = {
                         "ok": False,
                         "tool": name,
@@ -243,15 +272,21 @@ def _run_agent_impl(
                     }
 
                 else:
+
                     try:
-                        # All validation and allowlisting
-                        # are performed by the Tool Registry.
+                        # execute_tool enforces:
+                        # - Tool allowlist
+                        # - Pydantic argument validation
+                        # - Read-only tool restrictions
                         result = execute_tool(
                             name,
                             arguments,
                         )
 
-                    except (OSError, ValueError):
+                    except (
+                        OSError,
+                        ValueError,
+                    ):
                         result = {
                             "ok": False,
                             "tool": name,
@@ -259,23 +294,31 @@ def _run_agent_impl(
                         }
 
                 # -------------------------------------------------
-                # Observe tool arguments for evaluation only
+                # Optional observer for evaluation
+                #
+                # Arguments are NOT written to JSONL logs.
                 # -------------------------------------------------
 
                 if tool_observer is not None:
+
                     tool_observer(
                         name,
                         arguments.copy()
-                        if isinstance(arguments, dict)
+                        if isinstance(
+                            arguments,
+                            dict,
+                        )
                         else {},
                     )
 
                 # -------------------------------------------------
-                # Retain successful tool data in memory
+                # Preserve successful tool data in memory
                 # -------------------------------------------------
 
                 if result.get("ok") is True:
-                    tool_results.append(result)
+                    tool_results.append(
+                        result
+                    )
 
                 # -------------------------------------------------
                 # Record safe tool execution metadata
@@ -283,12 +326,17 @@ def _run_agent_impl(
 
                 trace.append({
                     "tool": name,
-                    "ok": result.get("ok", False),
-                    "error": result.get("error"),
+                    "ok": result.get(
+                        "ok",
+                        False,
+                    ),
+                    "error": result.get(
+                        "error"
+                    ),
                 })
 
                 # -------------------------------------------------
-                # Return tool results to the LLM
+                # Return the tool result to Ollama
                 # -------------------------------------------------
 
                 messages.append({
@@ -301,8 +349,9 @@ def _run_agent_impl(
                 })
 
         # ---------------------------------------------------------
-        # Maximum reasoning steps reached:
-        # request a final answer without additional tools.
+        # Maximum reasoning steps reached
+        #
+        # Ask the model for a final answer with no tools.
         # ---------------------------------------------------------
 
         response = _chat(
@@ -313,7 +362,9 @@ def _run_agent_impl(
 
         message = response.message
 
+        # No additional tool calls are allowed.
         if message.tool_calls:
+
             return _result(
                 "limit_reached",
                 "Agent requested more tools than allowed.",
@@ -331,7 +382,7 @@ def _run_agent_impl(
         )
 
         # ---------------------------------------------------------
-        # Ground the final answer in actual tool results
+        # Ground final answer in actual tool results
         # ---------------------------------------------------------
 
         if answer:
@@ -348,10 +399,14 @@ def _run_agent_impl(
         )
 
     # -------------------------------------------------------------
-    # Handle Ollama / HTTP errors
+    # Handle Ollama or HTTP errors
     # -------------------------------------------------------------
 
-    except (ResponseError, HTTPError) as exc:
+    except (
+        ResponseError,
+        HTTPError,
+    ) as exc:
+
         return _result(
             "llm_error",
             (
@@ -375,9 +430,33 @@ def run_agent(
         [str, dict[str, Any]], None
     ] | None = None,
 ) -> dict:
-    """Run the agent and record its execution trace."""
+    """Run the agent and record execution metadata."""
+
+    # -------------------------------------------------------------
+    # Phase 6.6B: identify the execution mode
+    #
+    # A provided client is marked as injected_client.
+    # Otherwise, run_agent uses the default local Ollama client.
+    #
+    # This identifies the invocation mode, not proof
+    # that an actual model request completed.
+    # -------------------------------------------------------------
+
+    execution_mode = (
+        "injected_client"
+        if client is not None
+        else "local_ollama"
+    )
+
+    # -------------------------------------------------------------
+    # Measure execution latency
+    # -------------------------------------------------------------
 
     start = perf_counter()
+
+    # -------------------------------------------------------------
+    # Run the internal agent
+    # -------------------------------------------------------------
 
     result = _run_agent_impl(
         question,
@@ -390,9 +469,14 @@ def run_agent(
         perf_counter() - start
     ) * 1000
 
+    # -------------------------------------------------------------
+    # Save safe execution metadata to local JSONL
+    # -------------------------------------------------------------
+
     return record_agent_trace(
         result,
         elapsed_ms,
+        execution_mode=execution_mode,
     )
 
 
@@ -408,10 +492,15 @@ if __name__ == "__main__":
         "Consulte la procédure correspondante."
     )
 
-    print("OpsGuard AI - Agent Orchestrator")
+    print(
+        "OpsGuard AI - Agent Orchestrator"
+    )
+
     print("-" * 45)
 
-    output = run_agent(question)
+    output = run_agent(
+        question
+    )
 
     print(
         json.dumps(

@@ -47,6 +47,7 @@ def test_agent_trace_contains_metadata_only(
     assert event["trace_id"] == result["trace_id"]
     assert event["status"] == "completed"
     assert event["tool_call_count"] == 0
+    assert event["execution_mode"] == "injected_client"
 
     assert "Question privée" not in contents
     assert "Réponse confidentielle" not in contents

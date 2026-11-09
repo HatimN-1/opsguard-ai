@@ -6,6 +6,7 @@ import json
 import pytest
 
 from app.dashboard.data import (
+    filter_traces,
     load_report_summary,
     load_traces,
     summarize_traces,
@@ -192,3 +193,73 @@ def test_invalid_reports_are_ignored(tmp_path):
             path,
             kind="unexpected",
         )
+
+
+
+def test_execution_mode_with_legacy_traces(tmp_path):
+    path = tmp_path / "traces.jsonl"
+
+    old_event = _event()
+
+    new_event = {
+        **_event(),
+        "execution_mode": "local_ollama",
+    }
+
+    path.write_text(
+        json.dumps(old_event)
+        + "\n"
+        + json.dumps(new_event)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    traces = load_traces(path)
+
+    assert traces[0]["execution_mode"] == "unclassified"
+    assert traces[1]["execution_mode"] == "local_ollama"
+
+
+def test_filter_traces_by_mode_status_and_tool():
+    events = [
+        {
+            "execution_mode": "local_ollama",
+            "status": "completed",
+            "tools_used": [
+                {"tool": "get_pipeline_status"},
+            ],
+        },
+        {
+            "execution_mode": "injected_client",
+            "status": "limit_reached",
+            "tools_used": [
+                {"tool": "delete_everything"},
+            ],
+        },
+    ]
+
+    filtered = filter_traces(
+        events,
+        mode="local_ollama",
+        status="completed",
+        tool="get_pipeline_status",
+    )
+
+    assert len(filtered) == 1
+    assert (
+        filtered[0]["execution_mode"]
+        == "local_ollama"
+    )
+
+    assert filter_traces(
+        events,
+        mode="local_ollama",
+        tool="delete_everything",
+    ) == []
+
+    with pytest.raises(ValueError):
+        filter_traces(
+            events,
+            mode="invalid_mode",
+        )
+

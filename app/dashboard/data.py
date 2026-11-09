@@ -7,9 +7,15 @@ from collections import Counter, deque
 from pathlib import Path
 from statistics import mean
 
+# ---------------------------------------------------------------------
+# Project paths
+# ---------------------------------------------------------------------
+
 ROOT = Path(__file__).resolve().parents[2]
 
-TRACE_FILE = ROOT / "logs" / "agent_traces.jsonl"
+TRACE_FILE = (
+    ROOT / "logs" / "agent_traces.jsonl"
+)
 
 TOOL_REPORT = (
     ROOT / "outputs" / "agent_evaluation_repeated.json"
@@ -20,51 +26,91 @@ QUALITY_REPORT = (
 )
 
 
-def _safe_text(value: object, limit: int = 80) -> str:
+# ---------------------------------------------------------------------
+# Safe text conversion
+# ---------------------------------------------------------------------
+
+def _safe_text(
+    value: object,
+    limit: int = 80,
+) -> str:
     """Return bounded display text."""
 
-    return value[:limit] if isinstance(value, str) else ""
+    if isinstance(value, str):
+        return value[:limit]
 
+    return ""
+
+
+# ---------------------------------------------------------------------
+# Load local JSONL traces
+# ---------------------------------------------------------------------
 
 def load_traces(
     path: Path | None = None,
     *,
     limit: int = 500,
 ) -> list[dict]:
-    """Load safe trace metadata, keeping the newest records."""
+    """Load safe metadata from the newest local agent traces."""
 
     if not 1 <= limit <= 5000:
         raise ValueError(
             "limit must be between 1 and 5000"
         )
 
-    source = path if path is not None else TRACE_FILE
+    source = (
+        path
+        if path is not None
+        else TRACE_FILE
+    )
 
-    events: deque[dict] = deque(maxlen=limit)
+    events: deque[dict] = deque(
+        maxlen=limit
+    )
 
     try:
-        with source.open(encoding="utf-8") as handle:
+        with source.open(
+            encoding="utf-8"
+        ) as handle:
+
             for line in handle:
+
+                # -------------------------------------------------
+                # Decode one JSONL event
+                # -------------------------------------------------
+
                 try:
                     raw = json.loads(line)
+
                 except json.JSONDecodeError:
                     continue
 
                 if not isinstance(raw, dict):
                     continue
 
-                raw_tools = raw.get("tools_used", [])
+                # -------------------------------------------------
+                # Read safe tool execution metadata
+                # -------------------------------------------------
 
-                if not isinstance(raw_tools, list):
+                raw_tools = raw.get(
+                    "tools_used",
+                    [],
+                )
+
+                if not isinstance(
+                    raw_tools,
+                    list,
+                ):
                     raw_tools = []
 
-                # Only approved execution metadata is retained.
                 safe_tools = [
                     {
                         "tool": _safe_text(
                             item.get("tool")
                         ),
-                        "ok": item.get("ok") is True,
+                        "ok": (
+                            item.get("ok") is True
+                        ),
                         "error": _safe_text(
                             item.get("error")
                         ),
@@ -73,15 +119,58 @@ def load_traces(
                     if isinstance(item, dict)
                 ][:4]
 
-                latency = raw.get("latency_ms")
+                # -------------------------------------------------
+                # Validate the latency
+                # -------------------------------------------------
+
+                latency = raw.get(
+                    "latency_ms"
+                )
 
                 if (
-                    not isinstance(latency, (int, float))
-                    or isinstance(latency, bool)
-                    or not math.isfinite(latency)
+                    not isinstance(
+                        latency,
+                        (int, float),
+                    )
+                    or isinstance(
+                        latency,
+                        bool,
+                    )
+                    or not math.isfinite(
+                        latency
+                    )
                     or latency < 0
                 ):
                     latency = None
+
+                # -------------------------------------------------
+                # Determine execution origin
+                #
+                # Older traces do not include execution_mode.
+                # They must remain unclassified.
+                # -------------------------------------------------
+
+                execution_mode = raw.get(
+                    "execution_mode"
+                )
+
+                if execution_mode not in (
+                    "local_ollama",
+                    "injected_client",
+                ):
+                    execution_mode = (
+                        "unclassified"
+                    )
+
+                # -------------------------------------------------
+                # Keep only approved observability fields
+                #
+                # Never retain:
+                # - User questions
+                # - Generated answers
+                # - Tool arguments
+                # - Secrets
+                # -------------------------------------------------
 
                 events.append({
                     "trace_id": _safe_text(
@@ -89,7 +178,9 @@ def load_traces(
                         64,
                     ),
                     "timestamp_utc": _safe_text(
-                        raw.get("timestamp_utc"),
+                        raw.get(
+                            "timestamp_utc"
+                        ),
                         40,
                     ),
                     "model": _safe_text(
@@ -98,23 +189,129 @@ def load_traces(
                     "status": _safe_text(
                         raw.get("status")
                     ),
+                    "execution_mode": (
+                        execution_mode
+                    ),
                     "latency_ms": latency,
                     "tools_used": safe_tools,
                 })
 
-    except (OSError, UnicodeError):
+    except (
+        OSError,
+        UnicodeError,
+    ):
         return []
 
     return list(events)
 
 
-def summarize_traces(events: list[dict]) -> dict:
+# ---------------------------------------------------------------------
+# Filter agent traces
+# ---------------------------------------------------------------------
+
+def filter_traces(
+    events: list[dict],
+    *,
+    mode: str = "all",
+    status: str = "all",
+    tool: str = "all",
+) -> list[dict]:
+    """Filter traces by execution mode, status and tool."""
+
+    allowed_modes = (
+        "all",
+        "local_ollama",
+        "injected_client",
+        "unclassified",
+    )
+
+    if mode not in allowed_modes:
+        raise ValueError(
+            "Unsupported execution mode"
+        )
+
+    filtered_events = []
+
+    for event in events:
+
+        # -------------------------------------------------
+        # Filter by execution mode
+        # -------------------------------------------------
+
+        event_mode = event.get(
+            "execution_mode",
+            "unclassified",
+        )
+
+        if (
+            mode != "all"
+            and event_mode != mode
+        ):
+            continue
+
+        # -------------------------------------------------
+        # Filter by agent status
+        # -------------------------------------------------
+
+        event_status = event.get(
+            "status"
+        )
+
+        if (
+            status != "all"
+            and event_status != status
+        ):
+            continue
+
+        # -------------------------------------------------
+        # Filter by tool name
+        # -------------------------------------------------
+
+        if tool != "all":
+
+            tools_used = event.get(
+                "tools_used",
+                [],
+            )
+
+            tool_found = any(
+                item.get("tool") == tool
+                for item in tools_used
+            )
+
+            if not tool_found:
+                continue
+
+        filtered_events.append(
+            event
+        )
+
+    return filtered_events
+
+
+# ---------------------------------------------------------------------
+# Aggregate observability metrics
+# ---------------------------------------------------------------------
+
+def summarize_traces(
+    events: list[dict],
+) -> dict:
     """Calculate aggregate observability metrics."""
+
+    # -------------------------------------------------------------
+    # Count agent execution statuses
+    # -------------------------------------------------------------
 
     statuses = Counter(
         event["status"]
         for event in events
     )
+
+    # -------------------------------------------------------------
+    # Count tool calls
+    #
+    # Includes successful and rejected attempts.
+    # -------------------------------------------------------------
 
     tools = Counter(
         item["tool"]
@@ -123,11 +320,19 @@ def summarize_traces(events: list[dict]) -> dict:
         if item["tool"]
     )
 
+    # -------------------------------------------------------------
+    # Count rejected or failed tool calls
+    # -------------------------------------------------------------
+
     errors = sum(
         item["ok"] is False
         for event in events
         for item in event["tools_used"]
     )
+
+    # -------------------------------------------------------------
+    # Collect valid latencies
+    # -------------------------------------------------------------
 
     durations = [
         event["latency_ms"]
@@ -135,30 +340,50 @@ def summarize_traces(events: list[dict]) -> dict:
         if event["latency_ms"] is not None
     ]
 
+    # -------------------------------------------------------------
+    # Build dashboard summary
+    # -------------------------------------------------------------
+
     return {
         "total_runs": len(events),
-        "completed_runs": statuses["completed"],
-        "non_completed_runs": (
-            len(events) - statuses["completed"]
+        "completed_runs": (
+            statuses["completed"]
         ),
-        "tool_calls": sum(tools.values()),
+        "non_completed_runs": (
+            len(events)
+            - statuses["completed"]
+        ),
+        "tool_calls": sum(
+            tools.values()
+        ),
         "tool_errors": errors,
         "mean_latency_ms": (
-            round(mean(durations), 2)
+            round(
+                mean(durations),
+                2,
+            )
             if durations
             else None
         ),
-        "status_counts": dict(statuses),
-        "tool_counts": dict(tools),
+        "status_counts": dict(
+            statuses
+        ),
+        "tool_counts": dict(
+            tools
+        ),
     }
 
+
+# ---------------------------------------------------------------------
+# Load local evaluation reports
+# ---------------------------------------------------------------------
 
 def load_report_summary(
     path: Path,
     *,
     kind: str,
 ) -> dict | None:
-    """Read only pass/total counts from evaluation reports."""
+    """Read only safe counts from local evaluation reports."""
 
     keys = {
         "tools": (
@@ -171,14 +396,24 @@ def load_report_summary(
         ),
     }
 
+    # -------------------------------------------------------------
+    # Validate evaluation type
+    # -------------------------------------------------------------
+
     if kind not in keys:
         raise ValueError(
             "Unsupported evaluation report kind"
         )
 
+    # -------------------------------------------------------------
+    # Read the local JSON report
+    # -------------------------------------------------------------
+
     try:
         report = json.loads(
-            path.read_text(encoding="utf-8")
+            path.read_text(
+                encoding="utf-8"
+            )
         )
 
     except (
@@ -188,13 +423,31 @@ def load_report_summary(
     ):
         return None
 
-    if not isinstance(report, dict):
+    if not isinstance(
+        report,
+        dict,
+    ):
         return None
 
-    passed_key, total_key = keys[kind]
+    # -------------------------------------------------------------
+    # Extract the expected count fields
+    # -------------------------------------------------------------
 
-    passed = report.get(passed_key)
-    total = report.get(total_key)
+    passed_key, total_key = (
+        keys[kind]
+    )
+
+    passed = report.get(
+        passed_key
+    )
+
+    total = report.get(
+        total_key
+    )
+
+    # -------------------------------------------------------------
+    # Validate counts
+    # -------------------------------------------------------------
 
     if (
         type(passed) is not int
@@ -203,6 +456,10 @@ def load_report_summary(
         or not 0 <= passed <= total
     ):
         return None
+
+    # -------------------------------------------------------------
+    # Return safe summary only
+    # -------------------------------------------------------------
 
     return {
         "passed": passed,

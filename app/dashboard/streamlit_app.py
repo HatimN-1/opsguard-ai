@@ -7,21 +7,28 @@ import streamlit as st
 from app.dashboard.data import (
     QUALITY_REPORT,
     TOOL_REPORT,
+    filter_traces,
     load_report_summary,
     load_traces,
     summarize_traces,
 )
 
+# ------------------------------------------------------------
+# Page configuration
+# ------------------------------------------------------------
+
 st.set_page_config(
-    page_title="OpsGuard AI",
+    page_title="OpsGuard AI - Observability",
+    page_icon="📊",
     layout="wide",
 )
 
 st.title("OpsGuard AI — Tableau de bord MLOps")
 
 st.caption(
-    "Données simulées et traces locales ; "
-    "lecture seule, sans prompts ni réponses."
+    "Observabilité locale en lecture seule. "
+    "Données simulées, sans affichage des prompts, "
+    "réponses ou arguments des outils."
 )
 
 if st.button("Actualiser les données"):
@@ -29,42 +36,132 @@ if st.button("Actualiser les données"):
 
 
 # ------------------------------------------------------------
-# Load local execution traces
+# Load safe local traces
 # ------------------------------------------------------------
 
-traces = load_traces(limit=500)
+all_traces = load_traces(limit=500)
+
+
+# ------------------------------------------------------------
+# Interactive filters
+# ------------------------------------------------------------
+
+st.subheader("Filtres des exécutions")
+
+mode_options = {
+    "Toutes les traces": "all",
+    "Client Ollama par défaut": "local_ollama",
+    "Client injecté (tests possibles)": "injected_client",
+    "Anciennes traces non classées": "unclassified",
+}
+
+status_options = [
+    "all",
+    *sorted({
+        event["status"]
+        for event in all_traces
+        if event["status"]
+    }),
+]
+
+tool_options = [
+    "all",
+    *sorted({
+        item["tool"]
+        for event in all_traces
+        for item in event["tools_used"]
+        if item["tool"]
+    }),
+]
+
+mode_column, status_column, tool_column = st.columns(3)
+
+with mode_column:
+    selected_mode = st.selectbox(
+        "Origine de l'exécution",
+        options=list(mode_options.keys()),
+    )
+
+with status_column:
+    selected_status = st.selectbox(
+        "Statut de l'agent",
+        options=status_options,
+    )
+
+with tool_column:
+    selected_tool = st.selectbox(
+        "Outil appelé",
+        options=tool_options,
+    )
+
+
+# ------------------------------------------------------------
+# Apply filters
+# ------------------------------------------------------------
+
+traces = filter_traces(
+    all_traces,
+    mode=mode_options[selected_mode],
+    status=selected_status,
+    tool=selected_tool,
+)
 
 summary = summarize_traces(traces)
 
+st.caption(
+    f"{len(traces)} trace(s) affichée(s) "
+    f"sur {len(all_traces)} trace(s) chargée(s). "
+    "Les indicateurs ci-dessous reflètent les filtres."
+)
+
+if mode_options[selected_mode] == "all":
+    st.info(
+        "La vue globale peut mélanger de vraies requêtes "
+        "Ollama, des tests avec clients injectés "
+        "et des traces anciennes non classées. "
+        "Sélectionne 'Client Ollama par défaut' "
+        "pour analyser ce mode séparément."
+    )
+
 
 # ------------------------------------------------------------
-# Main KPI cards
+# Main execution indicators
 # ------------------------------------------------------------
+
+st.subheader("Indicateurs d'exécution")
 
 first, second, third, fourth = st.columns(4)
 
 first.metric(
-    "Exécutions",
-    summary["total_runs"],
+    label="Exécutions",
+    value=summary["total_runs"],
 )
 
 second.metric(
-    "Terminées",
-    summary["completed_runs"],
+    label="Terminées",
+    value=summary["completed_runs"],
 )
 
 third.metric(
-    "Erreurs d'outil",
-    summary["tool_errors"],
+    label="Appels d'outils en erreur",
+    value=summary["tool_errors"],
 )
 
+mean_latency = summary["mean_latency_ms"]
+
 fourth.metric(
-    "Latence moyenne",
-    (
-        f"{summary['mean_latency_ms'] / 1000:.2f} s"
-        if summary["mean_latency_ms"] is not None
+    label="Latence moyenne",
+    value=(
+        f"{mean_latency / 1000:.2f} s"
+        if mean_latency is not None
         else "—"
     ),
+)
+
+st.caption(
+    "Une exécution 'completed' indique que l'agent "
+    "a terminé sa réponse, pas qu'une action sensible "
+    "a été autorisée ou exécutée."
 )
 
 
@@ -84,97 +181,134 @@ quality_report = load_report_summary(
     kind="quality",
 )
 
-left, right = st.columns(2)
+evaluation_left, evaluation_right = st.columns(2)
 
-with left:
+with evaluation_left:
     st.metric(
-        "Outils et arguments",
-        (
-            f"{tool_report['passed']}"
-            f"/{tool_report['total']}"
-            if tool_report
+        label="Sélection des outils et arguments",
+        value=(
+            f"{tool_report['passed']}/{tool_report['total']}"
+            if tool_report is not None
             else "Non disponible"
         ),
     )
 
-with right:
+with evaluation_right:
     st.metric(
-        "Langue et faits attendus",
-        (
-            f"{quality_report['passed']}"
-            f"/{quality_report['total']}"
-            if quality_report
+        label="Langue et couverture des faits",
+        value=(
+            f"{quality_report['passed']}/{quality_report['total']}"
+            if quality_report is not None
             else "Non disponible"
         ),
     )
+
+st.caption(
+    "Les résultats des évaluations proviennent "
+    "des derniers rapports locaux disponibles. "
+    "Ils ne sont pas recalculés lors du filtrage."
+)
 
 
 # ------------------------------------------------------------
-# Charts and execution history
+# Charts and recent executions
 # ------------------------------------------------------------
 
 if not traces:
     st.info(
-        "Aucune trace disponible. "
-        "Lance une requête à l'agent local."
+        "Aucune trace ne correspond aux filtres "
+        "sélectionnés. Modifie les filtres ou lance "
+        "une nouvelle requête à l'agent."
     )
 
 else:
-    left_chart, right_chart = st.columns(2)
+    chart_left, chart_right = st.columns(2)
 
-    with left_chart:
+    # --------------------------------------------------------
+    # Execution status distribution
+    # --------------------------------------------------------
+
+    with chart_left:
         st.subheader("Statuts des exécutions")
 
-        chart = pd.DataFrame([
+        status_rows = [
             {
                 "Statut": name,
                 "Nombre": count,
             }
-            for name, count
-            in summary["status_counts"].items()
-        ])
+            for name, count in (
+                summary["status_counts"].items()
+            )
+        ]
 
-        st.bar_chart(
-            chart,
-            x="Statut",
-            y="Nombre",
-        )
-
-    with right_chart:
-        st.subheader("Appels par outil")
-
-        if summary["tool_counts"]:
-            chart = pd.DataFrame([
-                {
-                    "Outil": name,
-                    "Appels": count,
-                }
-                for name, count
-                in summary["tool_counts"].items()
-            ])
+        if status_rows:
+            status_df = pd.DataFrame(status_rows)
 
             st.bar_chart(
-                chart,
+                status_df,
+                x="Statut",
+                y="Nombre",
+            )
+        else:
+            st.info("Aucun statut à afficher.")
+
+    # --------------------------------------------------------
+    # Tool calls distribution
+    # --------------------------------------------------------
+
+    with chart_right:
+        st.subheader("Tentatives d'appels par outil")
+
+        st.caption(
+            "Les tentatives refusées sont comptabilisées. "
+            "Une tentative ne signifie pas qu'une action "
+            "a réellement été exécutée."
+        )
+
+        tool_rows = [
+            {
+                "Outil": name,
+                "Appels": count,
+            }
+            for name, count in (
+                summary["tool_counts"].items()
+            )
+        ]
+
+        if tool_rows:
+            tool_df = pd.DataFrame(tool_rows)
+
+            st.bar_chart(
+                tool_df,
                 x="Outil",
                 y="Appels",
             )
-
         else:
             st.info(
-                "Aucun outil appelé dans "
-                "les traces chargées."
+                "Aucun appel d'outil dans "
+                "les traces sélectionnées."
             )
 
-    st.subheader("Dernières exécutions")
+    # --------------------------------------------------------
+    # Recent execution history
+    # --------------------------------------------------------
+
+    st.subheader("Historique des dernières exécutions")
 
     rows = [
         {
             "Date UTC": event["timestamp_utc"],
             "Trace": event["trace_id"],
+            "Origine": event["execution_mode"],
             "Statut": event["status"],
+            "Modèle": event["model"],
             "Latence (ms)": event["latency_ms"],
-            "Outils": ", ".join(
+            "Outils appelés": ", ".join(
                 item["tool"]
+                for item in event["tools_used"]
+            ),
+            "Appels en erreur": sum(
+                item["ok"] is False
                 for item in event["tools_used"]
             ),
         }
@@ -188,7 +322,15 @@ else:
     )
 
 
+# ------------------------------------------------------------
+# Security and limitations notice
+# ------------------------------------------------------------
+
+st.divider()
+
 st.caption(
-    "Ce tableau de bord ne crée aucun ticket "
-    "et n'exécute aucun outil MLOps."
+    "OpsGuard AI — Observabilité locale. "
+    "Le tableau de bord ne crée aucun ticket, "
+    "n'approuve aucune action et n'exécute "
+    "aucun outil MLOps."
 )
