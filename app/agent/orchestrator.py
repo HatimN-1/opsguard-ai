@@ -9,6 +9,7 @@ from typing import Any
 from httpx import HTTPError
 from ollama import Client, ResponseError
 
+from app.agent.grounded_answer import compose_grounded_answer
 from app.agent.llm_client import (
     OLLAMA_HOST,
     OLLAMA_MODEL,
@@ -17,8 +18,13 @@ from app.agent.llm_client import (
 from app.agent.observability import record_agent_trace
 from app.agent.tool_registry import TOOL_SCHEMAS, execute_tool
 
+# Maximum number of tool executions per agent request.
 MAX_TOOL_CALLS = 4
 
+
+# ---------------------------------------------------------------------
+# Agent instructions
+# ---------------------------------------------------------------------
 
 AGENT_PROMPT = SYSTEM_PROMPT + """
 You are OpsGuard AI, an MLOps tool-using agent.
@@ -43,6 +49,9 @@ MANDATORY WORKFLOW:
    If the user asks in French, your final answer
    MUST be entirely in French.
 
+6. Use the exact values returned by the tools.
+   Do not omit important identifiers or metrics.
+
 SAFETY RULES:
 
 - Never invent metrics, logs, or tool results.
@@ -55,6 +64,9 @@ SAFETY RULES:
 """
 
 
+# ---------------------------------------------------------------------
+# Ollama communication
+# ---------------------------------------------------------------------
 
 def _chat(
     client: Client,
@@ -62,6 +74,7 @@ def _chat(
     tools: list[dict],
 ):
     """Call Ollama with bounded generation settings."""
+
     return client.chat(
         model=OLLAMA_MODEL,
         messages=messages,
@@ -75,11 +88,17 @@ def _chat(
     )
 
 
+# ---------------------------------------------------------------------
+# Standard agent result
+# ---------------------------------------------------------------------
+
 def _result(
     status: str,
     answer: str,
     trace: list[dict],
 ) -> dict:
+    """Build the standard agent response."""
+
     return {
         "status": status,
         "answer": answer,
@@ -89,6 +108,9 @@ def _result(
     }
 
 
+# ---------------------------------------------------------------------
+# Internal agent execution
+# ---------------------------------------------------------------------
 
 def _run_agent_impl(
     question: str,
@@ -99,7 +121,11 @@ def _run_agent_impl(
         [str, dict[str, Any]], None
     ] | None = None,
 ) -> dict:
-    """Execute bounded, validated LLM tool-calling turns."""
+    """Execute bounded and validated LLM tool-calling turns."""
+
+    # -------------------------------------------------------------
+    # Validate the user request
+    # -------------------------------------------------------------
 
     if not isinstance(question, str) or not question.strip():
         raise ValueError("Question cannot be empty")
@@ -108,7 +134,13 @@ def _run_agent_impl(
         raise ValueError("Question is too long")
 
     if not 1 <= max_steps <= 3:
-        raise ValueError("max_steps must be between 1 and 3")
+        raise ValueError(
+            "max_steps must be between 1 and 3"
+        )
+
+    # -------------------------------------------------------------
+    # Initialize the local Ollama client
+    # -------------------------------------------------------------
 
     if client is None:
         client = Client(
@@ -117,14 +149,30 @@ def _run_agent_impl(
         )
 
     messages: list[Any] = [
-        {"role": "system", "content": AGENT_PROMPT},
-        {"role": "user", "content": question},
+        {
+            "role": "system",
+            "content": AGENT_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": question,
+        },
     ]
 
+    # Public tool trace: names, success and error codes only.
     trace: list[dict] = []
+
+    # Private execution data kept in memory for grounding.
+    # These results are not added to JSONL logs.
+    tool_results: list[dict] = []
+
+    # -------------------------------------------------------------
+    # Main tool-calling loop
+    # -------------------------------------------------------------
 
     try:
         for _ in range(max_steps):
+
             response = _chat(
                 client,
                 messages,
@@ -134,10 +182,38 @@ def _run_agent_impl(
             message = response.message
             calls = message.tool_calls or []
 
+            # -----------------------------------------------------
+            # Case 1: The model returns a final answer
+            # -----------------------------------------------------
+
             if not calls:
-                answer = (message.content or "").strip()
-                status = "completed" if answer else "empty_response"
-                return _result(status, answer, trace)
+                answer = (
+                    message.content or ""
+                ).strip()
+
+                status = (
+                    "completed"
+                    if answer
+                    else "empty_response"
+                )
+
+                # Add verified facts from successful tools.
+                if answer:
+                    answer = compose_grounded_answer(
+                        question,
+                        answer,
+                        tool_results,
+                    )
+
+                return _result(
+                    status,
+                    answer,
+                    trace,
+                )
+
+            # -----------------------------------------------------
+            # Enforce the maximum number of tool calls
+            # -----------------------------------------------------
 
             if len(trace) + len(calls) > MAX_TOOL_CALLS:
                 return _result(
@@ -146,28 +222,46 @@ def _run_agent_impl(
                     trace,
                 )
 
+            # Preserve the assistant message with tool calls.
             messages.append(message)
 
+            # -----------------------------------------------------
+            # Execute the requested tools
+            # -----------------------------------------------------
+
             for call in calls:
+
                 name = call.function.name
                 arguments = call.function.arguments
 
+                # Reject malformed arguments.
                 if not isinstance(arguments, dict):
                     result = {
                         "ok": False,
                         "tool": name,
                         "error": "INVALID_ARGUMENTS",
                     }
+
                 else:
                     try:
-                        result = execute_tool(name, arguments)
+                        # All validation and allowlisting
+                        # are performed by the Tool Registry.
+                        result = execute_tool(
+                            name,
+                            arguments,
+                        )
+
                     except (OSError, ValueError):
                         result = {
                             "ok": False,
                             "tool": name,
                             "error": "TOOL_EXECUTION_ERROR",
                         }
-                
+
+                # -------------------------------------------------
+                # Observe tool arguments for evaluation only
+                # -------------------------------------------------
+
                 if tool_observer is not None:
                     tool_observer(
                         name,
@@ -176,11 +270,26 @@ def _run_agent_impl(
                         else {},
                     )
 
+                # -------------------------------------------------
+                # Retain successful tool data in memory
+                # -------------------------------------------------
+
+                if result.get("ok") is True:
+                    tool_results.append(result)
+
+                # -------------------------------------------------
+                # Record safe tool execution metadata
+                # -------------------------------------------------
+
                 trace.append({
                     "tool": name,
                     "ok": result.get("ok", False),
                     "error": result.get("error"),
                 })
+
+                # -------------------------------------------------
+                # Return tool results to the LLM
+                # -------------------------------------------------
 
                 messages.append({
                     "role": "tool",
@@ -191,8 +300,17 @@ def _run_agent_impl(
                     ),
                 })
 
-        # Final response: no further tools permitted.
-        response = _chat(client, messages, [])
+        # ---------------------------------------------------------
+        # Maximum reasoning steps reached:
+        # request a final answer without additional tools.
+        # ---------------------------------------------------------
+
+        response = _chat(
+            client,
+            messages,
+            [],
+        )
+
         message = response.message
 
         if message.tool_calls:
@@ -202,18 +320,51 @@ def _run_agent_impl(
                 trace,
             )
 
-        answer = (message.content or "").strip()
-        status = "completed" if answer else "empty_response"
+        answer = (
+            message.content or ""
+        ).strip()
 
-        return _result(status, answer, trace)
+        status = (
+            "completed"
+            if answer
+            else "empty_response"
+        )
+
+        # ---------------------------------------------------------
+        # Ground the final answer in actual tool results
+        # ---------------------------------------------------------
+
+        if answer:
+            answer = compose_grounded_answer(
+                question,
+                answer,
+                tool_results,
+            )
+
+        return _result(
+            status,
+            answer,
+            trace,
+        )
+
+    # -------------------------------------------------------------
+    # Handle Ollama / HTTP errors
+    # -------------------------------------------------------------
 
     except (ResponseError, HTTPError) as exc:
         return _result(
             "llm_error",
-            f"Ollama request failed: {type(exc).__name__}",
+            (
+                "Ollama request failed: "
+                f"{type(exc).__name__}"
+            ),
             trace,
         )
 
+
+# ---------------------------------------------------------------------
+# Public agent function with observability
+# ---------------------------------------------------------------------
 
 def run_agent(
     question: str,
@@ -235,7 +386,9 @@ def run_agent(
         tool_observer=tool_observer,
     )
 
-    elapsed_ms = (perf_counter() - start) * 1000
+    elapsed_ms = (
+        perf_counter() - start
+    ) * 1000
 
     return record_agent_trace(
         result,
@@ -243,8 +396,12 @@ def run_agent(
     )
 
 
+# ---------------------------------------------------------------------
+# Local execution
+# ---------------------------------------------------------------------
 
 if __name__ == "__main__":
+
     question = (
         "Analyse le pipeline etl_orders_daily. "
         "Pourquoi a-t-il échoué ? "
@@ -256,8 +413,10 @@ if __name__ == "__main__":
 
     output = run_agent(question)
 
-    print(json.dumps(
-        output,
-        indent=2,
-        ensure_ascii=False,
-    ))
+    print(
+        json.dumps(
+            output,
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
