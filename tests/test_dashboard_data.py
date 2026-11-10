@@ -368,3 +368,65 @@ def test_filtered_traces_update_tool_error_rate():
     assert summary["tool_successes"] == 1
     assert summary["tool_errors"] == 0
     assert summary["tool_error_rate_pct"] == 0.0
+
+
+def test_dashboard_loads_safe_event_timeline(tmp_path):
+    """Load only approved timeline metadata."""
+
+    path = tmp_path / "traces.jsonl"
+
+    raw_trace = {
+        **_event(),
+        "events": [
+            {
+                "event_type": "TOOL_COMPLETED",
+                "timestamp_utc": "2026-11-10T09:46:12+00:00",
+                "step": 1,
+                "tool": "get_pipeline_status",
+                "ok": True,
+                "question": "PRIVATE_QUESTION",
+                "arguments": {"secret": "PRIVATE_SECRET"},
+            },
+            {
+                "event_type": "UNAUTHORIZED_EVENT",
+                "timestamp_utc": "2026-11-10T09:46:13+00:00",
+            },
+        ],
+    }
+
+    path.write_text(
+        json.dumps(raw_trace),
+        encoding="utf-8",
+    )
+
+    traces = load_traces(path)
+
+    assert len(traces) == 1
+    assert len(traces[0]["events"]) == 1
+
+    event = traces[0]["events"][0]
+
+    assert event["event_type"] == "TOOL_COMPLETED"
+    assert event["tool"] == "get_pipeline_status"
+    assert event["ok"] is True
+
+    assert "PRIVATE_QUESTION" not in str(traces)
+    assert "PRIVATE_SECRET" not in str(traces)
+
+
+def test_dashboard_supports_legacy_traces_without_events(
+    tmp_path,
+):
+    """Old traces must remain readable."""
+
+    path = tmp_path / "legacy.jsonl"
+
+    path.write_text(
+        json.dumps(_event()),
+        encoding="utf-8",
+    )
+
+    traces = load_traces(path)
+
+    assert len(traces) == 1
+    assert traces[0]["events"] == []

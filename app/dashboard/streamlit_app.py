@@ -401,6 +401,110 @@ else:
     )
 
 
+    # --------------------------------------------------------
+    # Interactive event timeline
+    # --------------------------------------------------------
+
+    st.subheader("Chronologie des événements de l'agent")
+
+    st.caption(
+        "Sélectionne une exécution pour consulter "
+        "ses événements horodatés. "
+        "Aucun prompt, réponse ou argument sensible "
+        "n'est affiché."
+    )
+
+    # Only display traces containing a valid event timeline.
+    # Show the most recent executions first.
+    timeline_traces = [
+        event
+        for event in reversed(traces)
+        if event.get("trace_id") and event.get("events")
+    ]
+
+    if not timeline_traces:
+        st.info(
+            "Aucune chronologie disponible pour "
+            "les traces actuellement filtrées. "
+            "Les anciennes traces peuvent ne pas "
+            "contenir d'événements détaillés."
+        )
+
+    else:
+        trace_ids = [
+            event["trace_id"]
+            for event in timeline_traces
+        ]
+
+        selected_trace_id = st.selectbox(
+            "Sélectionner une exécution (trace_id)",
+            options=trace_ids,
+            key="event_timeline_trace_id",
+        )
+
+        selected_trace = next(
+            event
+            for event in timeline_traces
+            if event["trace_id"] == selected_trace_id
+        )
+
+        timeline = selected_trace["events"]
+
+        st.caption(
+            f"Origine : {selected_trace['execution_mode']} | "
+            f"Statut : {selected_trace['status']} | "
+            f"Nombre d'événements : {len(timeline)}"
+        )
+
+        timeline_rows = []
+
+        for index, event in enumerate(timeline, start=1):
+            outcome = event.get("ok")
+
+            if outcome is True:
+                outcome_label = "Succès"
+            elif outcome is False:
+                outcome_label = "Échec"
+            else:
+                outcome_label = "—"
+
+            timeline_rows.append({
+                "N°": index,
+                "Date UTC": event.get(
+                    "timestamp_utc",
+                    "—",
+                ),
+                "Événement": event.get(
+                    "event_type",
+                    "—",
+                ),
+                "Étape": event.get(
+                    "step",
+                    "—",
+                ),
+                "Outil": event.get(
+                    "tool",
+                    "—",
+                ),
+                "Résultat": outcome_label,
+                "Code d'erreur": event.get(
+                    "error",
+                    "—",
+                ),
+            })
+
+        st.dataframe(
+            timeline_rows,
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        st.caption(
+            "Les événements sont lus à partir du "
+            "journal JSONL local. Le tableau de bord "
+            "fonctionne uniquement en lecture seule."
+        )
+
 # ------------------------------------------------------------
 # Safety notice
 # ------------------------------------------------------------

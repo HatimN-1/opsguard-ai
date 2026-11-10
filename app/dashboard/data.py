@@ -7,6 +7,8 @@ from collections import Counter, deque
 from pathlib import Path
 from statistics import mean
 
+from app.agent.observability import sanitize_event_timeline
+
 # ---------------------------------------------------------------------
 # Project paths
 # ---------------------------------------------------------------------
@@ -64,7 +66,7 @@ def load_traces(
         else TRACE_FILE
     )
 
-    events: deque[dict] = deque(
+    traces: deque[dict] = deque(
         maxlen=limit
     )
 
@@ -76,7 +78,7 @@ def load_traces(
             for line in handle:
 
                 # -------------------------------------------------
-                # Decode one JSONL event
+                # Decode one JSONL trace
                 # -------------------------------------------------
 
                 try:
@@ -120,7 +122,7 @@ def load_traces(
                 ][:4]
 
                 # -------------------------------------------------
-                # Validate the latency
+                # Validate latency
                 # -------------------------------------------------
 
                 latency = raw.get(
@@ -146,8 +148,8 @@ def load_traces(
                 # -------------------------------------------------
                 # Determine execution origin
                 #
-                # Older traces do not include execution_mode.
-                # They must remain unclassified.
+                # Older traces may not contain execution_mode.
+                # Keep them classified as unclassified.
                 # -------------------------------------------------
 
                 execution_mode = raw.get(
@@ -163,16 +165,34 @@ def load_traces(
                     )
 
                 # -------------------------------------------------
-                # Keep only approved observability fields
+                # Sanitize event timeline
                 #
-                # Never retain:
+                # Only allow approved metadata:
+                # - Event type
+                # - UTC timestamp
+                # - Execution step
+                # - Approved tool name
+                # - Success flag
+                # - Approved error code
+                #
+                # Never expose:
                 # - User questions
-                # - Generated answers
+                # - Model responses
                 # - Tool arguments
                 # - Secrets
+                #
+                # Legacy traces without events remain supported.
                 # -------------------------------------------------
 
-                events.append({
+                safe_events = sanitize_event_timeline(
+                    raw.get("events")
+                )
+
+                # -------------------------------------------------
+                # Keep only approved observability fields
+                # -------------------------------------------------
+
+                traces.append({
                     "trace_id": _safe_text(
                         raw.get("trace_id"),
                         64,
@@ -194,6 +214,7 @@ def load_traces(
                     ),
                     "latency_ms": latency,
                     "tools_used": safe_tools,
+                    "events": safe_events,
                 })
 
     except (
@@ -202,7 +223,7 @@ def load_traces(
     ):
         return []
 
-    return list(events)
+    return list(traces)
 
 
 # ---------------------------------------------------------------------
@@ -293,7 +314,6 @@ def filter_traces(
 # Aggregate observability metrics
 # ---------------------------------------------------------------------
 
-
 def summarize_traces(
     events: list[dict],
 ) -> dict:
@@ -304,11 +324,16 @@ def summarize_traces(
         for event in events
     )
 
-    # Count successful and failed tool calls separately.
+    # -------------------------------------------------------------
+    # Count successful and failed tool calls separately
+    # -------------------------------------------------------------
+
     tool_outcomes: dict[str, dict[str, int]] = {}
 
     for event in events:
+
         for item in event["tools_used"]:
+
             name = item.get("tool")
 
             if not name:
@@ -328,6 +353,10 @@ def summarize_traces(
 
             tool_outcomes[name][outcome] += 1
 
+    # -------------------------------------------------------------
+    # Tool totals
+    # -------------------------------------------------------------
+
     tool_successes = sum(
         counts["success"]
         for counts in tool_outcomes.values()
@@ -338,19 +367,36 @@ def summarize_traces(
         for counts in tool_outcomes.values()
     )
 
-    tool_calls = tool_successes + tool_errors
+    tool_calls = (
+        tool_successes + tool_errors
+    )
+
+    # -------------------------------------------------------------
+    # Tool error rate
+    # -------------------------------------------------------------
 
     error_rate = (
-        round(100 * tool_errors / tool_calls, 2)
+        round(
+            100 * tool_errors / tool_calls,
+            2,
+        )
         if tool_calls
         else None
     )
+
+    # -------------------------------------------------------------
+    # Latency metrics
+    # -------------------------------------------------------------
 
     durations = [
         event["latency_ms"]
         for event in events
         if event["latency_ms"] is not None
     ]
+
+    # -------------------------------------------------------------
+    # Return dashboard statistics
+    # -------------------------------------------------------------
 
     return {
         "total_runs": len(events),
@@ -363,17 +409,28 @@ def summarize_traces(
         "tool_errors": tool_errors,
         "tool_error_rate_pct": error_rate,
         "mean_latency_ms": (
-            round(mean(durations), 2)
+            round(
+                mean(durations),
+                2,
+            )
             if durations
             else None
         ),
         "status_counts": dict(statuses),
         "tool_counts": {
-            name: counts["success"] + counts["failed"]
+            name: (
+                counts["success"]
+                + counts["failed"]
+            )
             for name, counts in tool_outcomes.items()
         },
-        "tool_outcomes": dict(sorted(tool_outcomes.items())),
+        "tool_outcomes": dict(
+            sorted(
+                tool_outcomes.items()
+            )
+        ),
     }
+
 
 # ---------------------------------------------------------------------
 # Load local evaluation reports
@@ -407,7 +464,7 @@ def load_report_summary(
         )
 
     # -------------------------------------------------------------
-    # Read the local JSON report
+    # Read local JSON report
     # -------------------------------------------------------------
 
     try:
@@ -431,7 +488,7 @@ def load_report_summary(
         return None
 
     # -------------------------------------------------------------
-    # Extract the expected count fields
+    # Extract expected count fields
     # -------------------------------------------------------------
 
     passed_key, total_key = (
@@ -459,7 +516,7 @@ def load_report_summary(
         return None
 
     # -------------------------------------------------------------
-    # Return safe summary only
+    # Return safe report summary
     # -------------------------------------------------------------
 
     return {

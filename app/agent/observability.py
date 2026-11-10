@@ -169,6 +169,24 @@ def _sanitize_event(
 
     return event
 
+def sanitize_event_timeline(
+    raw_events: object,
+) -> list[dict[str, Any]]:
+    """Return only approved, bounded timeline events."""
+
+    if not isinstance(raw_events, list):
+        return []
+
+    safe_events = []
+
+    for raw in raw_events[:MAX_EVENTS_PER_TRACE]:
+        safe_event = _sanitize_event(raw)
+
+        if safe_event is not None:
+            safe_events.append(safe_event)
+
+    return safe_events
+
 
 def record_agent_trace(
     result: dict[str, Any],
@@ -210,17 +228,13 @@ def record_agent_trace(
 
     # Event timelines are optional for compatibility
     # with previous traces and existing tests.
+
     if events is not None:
-        safe_events = []
-
-        for raw in events[:MAX_EVENTS_PER_TRACE]:
-            safe_event = _sanitize_event(raw)
-
-            if safe_event is not None:
-                safe_events.append(safe_event)
+        safe_events = sanitize_event_timeline(events)
 
         trace["events"] = safe_events
         trace["event_count"] = len(safe_events)
+
 
     destination = path if path is not None else TRACE_FILE
 
