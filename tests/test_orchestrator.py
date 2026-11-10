@@ -4,6 +4,7 @@
 from types import SimpleNamespace
 
 import pytest
+from httpx import ReadTimeout
 
 from app.agent.orchestrator import run_agent
 
@@ -165,3 +166,180 @@ def test_tool_observer_receives_arguments():
     ]
 
     assert "arguments" not in result["tools_used"][0]
+
+
+def test_ollama_timeout_is_controlled():
+    class TimeoutClient:
+        def chat(self, **kwargs):
+            raise ReadTimeout("Simulated timeout")
+
+    result = run_agent(
+        "Diagnose the pipeline",
+        client=TimeoutClient(),
+    )
+
+    assert result["status"] == "llm_error"
+    assert result["tool_call_count"] == 0
+    assert result["trace_id"]
+
+
+def test_missing_ollama_message_is_rejected():
+    client = FakeClient([
+        SimpleNamespace(message=None),
+    ])
+
+    result = run_agent(
+        "Diagnose a pipeline",
+        client=client,
+    )
+
+    assert result["status"] == "invalid_response"
+    assert result["tool_call_count"] == 0
+
+
+def test_malformed_ollama_tool_call_is_rejected():
+    client = FakeClient([
+        SimpleNamespace(
+            message=SimpleNamespace(
+                content="",
+                tool_calls=[
+                    SimpleNamespace(function=None),
+                ],
+            )
+        ),
+    ])
+
+    result = run_agent(
+        "Diagnose a pipeline",
+        client=client,
+    )
+
+    assert result["status"] == "invalid_response"
+    assert result["tool_call_count"] == 0
+
+
+
+def test_tool_unexpected_exception_is_controlled(
+    monkeypatch,
+):
+    """Unexpected tool failures must not crash the agent."""
+
+    def broken_tool(name, arguments):
+        raise RuntimeError("Internal sensitive error")
+
+    monkeypatch.setattr(
+        "app.agent.orchestrator.execute_tool",
+        broken_tool,
+    )
+
+    client = FakeClient([
+        fake_response(calls=[
+            (
+                "get_pipeline_status",
+                {"pipeline_id": "etl_orders_daily"},
+            ),
+        ]),
+        fake_response("L'outil a échoué."),
+    ])
+
+    result = run_agent(
+        "Analyse etl_orders_daily.",
+        client=client,
+    )
+
+    assert result["status"] == "completed"
+    assert result["tools_used"][0]["ok"] is False
+    assert (
+        result["tools_used"][0]["error"]
+        == "TOOL_EXECUTION_ERROR"
+    )
+    assert "Internal sensitive error" not in str(result)
+
+
+def test_malformed_tool_result_is_controlled(
+    monkeypatch,
+):
+    """Invalid tool results must be rejected safely."""
+
+    monkeypatch.setattr(
+        "app.agent.orchestrator.execute_tool",
+        lambda name, arguments: None,
+    )
+
+    client = FakeClient([
+        fake_response(calls=[
+            (
+                "get_pipeline_status",
+                {"pipeline_id": "etl_orders_daily"},
+            ),
+        ]),
+        fake_response("Le résultat est indisponible."),
+    ])
+
+    result = run_agent(
+        "Analyse etl_orders_daily.",
+        client=client,
+    )
+
+    assert result["status"] == "completed"
+    assert result["tool_call_count"] == 1
+    assert result["tools_used"][0]["ok"] is False
+    assert (
+        result["tools_used"][0]["error"]
+        == "TOOL_EXECUTION_ERROR"
+    )
+
+
+def test_max_steps_allows_final_answer_without_tools():
+    """After the step limit, only a final answer is allowed."""
+
+    client = FakeClient([
+        fake_response(calls=[
+            (
+                "get_pipeline_status",
+                {"pipeline_id": "etl_orders_daily"},
+            ),
+        ]),
+        fake_response("Le diagnostic est terminé."),
+    ])
+
+    result = run_agent(
+        "Analyse etl_orders_daily.",
+        client=client,
+        max_steps=1,
+    )
+
+    assert result["status"] == "completed"
+    assert result["tool_call_count"] == 1
+    assert len(client.requests) == 2
+    assert client.requests[1]["tools"] == []
+
+
+def test_max_steps_blocks_additional_tool_requests():
+    """Tool requests after the step limit must be rejected."""
+
+    client = FakeClient([
+        fake_response(calls=[
+            (
+                "get_pipeline_status",
+                {"pipeline_id": "etl_orders_daily"},
+            ),
+        ]),
+        fake_response(calls=[
+            (
+                "search_runbook",
+                {"error_code": "SCHEMA_VALIDATION_ERROR"},
+            ),
+        ]),
+    ])
+
+    result = run_agent(
+        "Analyse etl_orders_daily.",
+        client=client,
+        max_steps=1,
+    )
+
+    assert result["status"] == "limit_reached"
+    assert result["tool_call_count"] == 1
+    assert len(client.requests) == 2
+    assert client.requests[1]["tools"] == []

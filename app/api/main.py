@@ -192,5 +192,9 @@ def agent_chat(payload: AgentChatRequest) -> dict:
             status_code=503,
             detail="Local LLM service unavailable",
         )
-
+    if result["status"] == "invalid_response":
+        raise HTTPException(
+            status_code=502,
+            detail="Local LLM returned an invalid response",
+        )
     return result

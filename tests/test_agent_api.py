@@ -78,3 +78,24 @@ def test_agent_chat_llm_unavailable():
         )
 
     assert response.status_code == 503
+
+
+def test_agent_chat_invalid_llm_response():
+    with patch(
+        "app.api.main.run_agent",
+        return_value={
+            "status": "invalid_response",
+            "answer": "",
+            "model": "qwen3:1.7b",
+            "tools_used": [],
+            "tool_call_count": 0,
+        },
+    ):
+        response = client.post(
+            "/agent/chat",
+            json={
+                "question": "Diagnose my pipeline",
+            },
+        )
+
+    assert response.status_code == 502

@@ -26,6 +26,86 @@ MAX_TOOL_CALLS = 4
 
 
 # ---------------------------------------------------------------------
+# Invalid LLM response handling
+# ---------------------------------------------------------------------
+
+class InvalidLLMResponseError(Exception):
+    """Raised when Ollama returns a malformed response."""
+
+
+def _validated_message(response: Any) -> Any:
+    """Validate the structure of a response from Ollama."""
+
+    message = getattr(
+        response,
+        "message",
+        None,
+    )
+
+    if message is None:
+        raise InvalidLLMResponseError(
+            "Missing Ollama message"
+        )
+
+    content = getattr(
+        message,
+        "content",
+        None,
+    )
+
+    calls = getattr(
+        message,
+        "tool_calls",
+        None,
+    )
+
+    # Content must be a string or None.
+    if (
+        content is not None
+        and not isinstance(content, str)
+    ):
+        raise InvalidLLMResponseError(
+            "Invalid response content"
+        )
+
+    # Tool calls must be a list or None.
+    if (
+        calls is not None
+        and not isinstance(calls, list)
+    ):
+        raise InvalidLLMResponseError(
+            "Invalid tool calls structure"
+        )
+
+    # Verify that each tool call contains
+    # a valid function name.
+    for call in calls or []:
+
+        function = getattr(
+            call,
+            "function",
+            None,
+        )
+
+        name = getattr(
+            function,
+            "name",
+            None,
+        )
+
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or len(name) > 80
+        ):
+            raise InvalidLLMResponseError(
+                "Invalid tool call structure"
+            )
+
+    return message
+
+
+# ---------------------------------------------------------------------
 # System prompt and safety instructions
 # ---------------------------------------------------------------------
 
@@ -191,10 +271,13 @@ def _run_agent_impl(
                 TOOL_SCHEMAS,
             )
 
-            message = response.message
+            # Validate the LLM response before using it.
+            message = _validated_message(
+                response
+            )
 
             calls = (
-                message.tool_calls or []
+                getattr(message, "tool_calls", None) or []
             )
 
             # -----------------------------------------------------
@@ -204,7 +287,7 @@ def _run_agent_impl(
             if not calls:
 
                 answer = (
-                    message.content or ""
+                    getattr(message, "content", None) or ""
                 ).strip()
 
                 status = (
@@ -240,7 +323,7 @@ def _run_agent_impl(
                     trace,
                 )
 
-            # Add the assistant message with its tool requests.
+            # Add assistant message with its tool requests.
             messages.append(message)
 
             # -----------------------------------------------------
@@ -253,8 +336,10 @@ def _run_agent_impl(
                     call.function.name
                 )
 
-                arguments = (
-                    call.function.arguments
+                arguments = getattr(
+                    call.function,
+                    "arguments",
+                    None,
                 )
 
                 # -------------------------------------------------
@@ -272,26 +357,35 @@ def _run_agent_impl(
                     }
 
                 else:
-
                     try:
-                        # execute_tool enforces:
-                        # - Tool allowlist
-                        # - Pydantic argument validation
-                        # - Read-only tool restrictions
                         result = execute_tool(
                             name,
                             arguments,
                         )
 
-                    except (
-                        OSError,
-                        ValueError,
-                    ):
+                        # Reject malformed tool results
+                        # before using or logging them.
+                        if (
+                            not isinstance(result, dict)
+                            or not isinstance(
+                                result.get("ok"),
+                                bool,
+                            )
+                        ):
+                            raise TypeError(
+                                "Invalid tool result"
+                            )
+
+                    except Exception:  # noqa: BLE001
+                        # The tool boundary isolates failures.
+                        # Never expose internal exception details
+                        # in the agent response or trace.
                         result = {
                             "ok": False,
                             "tool": name,
                             "error": "TOOL_EXECUTION_ERROR",
                         }
+
 
                 # -------------------------------------------------
                 # Optional observer for evaluation
@@ -360,10 +454,13 @@ def _run_agent_impl(
             [],
         )
 
-        message = response.message
+        # Validate the final LLM response.
+        message = _validated_message(
+            response
+        )
 
         # No additional tool calls are allowed.
-        if message.tool_calls:
+        if getattr(message, "tool_calls", None):
 
             return _result(
                 "limit_reached",
@@ -372,7 +469,7 @@ def _run_agent_impl(
             )
 
         answer = (
-            message.content or ""
+            getattr(message, "content", None) or ""
         ).strip()
 
         status = (
@@ -399,7 +496,19 @@ def _run_agent_impl(
         )
 
     # -------------------------------------------------------------
-    # Handle Ollama or HTTP errors
+    # Handle malformed LLM responses
+    # -------------------------------------------------------------
+
+    except InvalidLLMResponseError:
+
+        return _result(
+            "invalid_response",
+            "Ollama returned an invalid response.",
+            trace,
+        )
+
+    # -------------------------------------------------------------
+    # Handle Ollama timeouts and HTTP errors
     # -------------------------------------------------------------
 
     except (
@@ -433,10 +542,10 @@ def run_agent(
     """Run the agent and record execution metadata."""
 
     # -------------------------------------------------------------
-    # Phase 6.6B: identify the execution mode
+    # Identify the execution mode
     #
     # A provided client is marked as injected_client.
-    # Otherwise, run_agent uses the default local Ollama client.
+    # Otherwise, the default local Ollama client is used.
     #
     # This identifies the invocation mode, not proof
     # that an actual model request completed.
