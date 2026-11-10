@@ -7,6 +7,9 @@ import re
 from app.agent.response_guard import detect_contradictions
 from app.agent.response_quality import detect_language
 
+# ---------------------------------------------------------------------
+# Validate safe technical identifiers
+# ---------------------------------------------------------------------
 
 def _identifier(value: object) -> str | None:
     """Keep only short, safe technical identifiers."""
@@ -19,6 +22,10 @@ def _identifier(value: object) -> str | None:
 
     return None
 
+
+# ---------------------------------------------------------------------
+# Format valid percentages
+# ---------------------------------------------------------------------
 
 def _percentage(value: object) -> str | None:
     """Format valid percentages."""
@@ -34,6 +41,10 @@ def _percentage(value: object) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------
+# Compose a grounded and secure agent answer
+# ---------------------------------------------------------------------
+
 def compose_grounded_answer(
     question: str,
     generated_answer: str,
@@ -41,17 +52,33 @@ def compose_grounded_answer(
 ) -> str:
     """Return grounded facts and suppress unsafe model claims."""
 
-    # Check contradictions even when no tool succeeded.
+    # -------------------------------------------------------------
+    # Detect contradictions between the generated answer
+    # and verified tool results.
+    # -------------------------------------------------------------
+
     issues = detect_contradictions(
         generated_answer,
         tool_results,
     )
 
-    french_question = detect_language(question) == "fr"
+    # -------------------------------------------------------------
+    # Detect the user's language.
+    # -------------------------------------------------------------
 
-    # Preserve responses to non-French requests,
-    # except detected unsupported ticket actions.
+    french_question = (
+        detect_language(question) == "fr"
+    )
+
+    # -------------------------------------------------------------
+    # Non-French requests
+    #
+    # Preserve the existing behavior for non-French requests,
+    # except unsupported ticket actions.
+    # -------------------------------------------------------------
+
     if not french_question:
+
         if "UNVERIFIED_TICKET_ACTION" in issues:
             return (
                 "No ticket was created or approved by this "
@@ -60,25 +87,36 @@ def compose_grounded_answer(
 
         return generated_answer
 
+    # -------------------------------------------------------------
+    # Store verified facts derived from successful tools only.
+    # -------------------------------------------------------------
+
     facts: list[str] = []
+
     proposal_only = False
 
+    # -------------------------------------------------------------
+    # Process verified tool results
+    # -------------------------------------------------------------
+
     for result in tool_results:
-        # Only successful tool results can provide facts.
+
+        # Ignore failed tools.
         if result.get("ok") is not True:
             continue
 
         name = result.get("tool")
         data = result.get("data")
 
-        # --------------------------------------------------
-        # Pipeline facts
-        # --------------------------------------------------
+        # =========================================================
+        # Tool 1: get_pipeline_status
+        # =========================================================
 
         if (
             name == "get_pipeline_status"
             and isinstance(data, dict)
         ):
+
             pipeline_id = _identifier(
                 data.get("pipeline_id")
             )
@@ -107,14 +145,15 @@ def compose_grounded_answer(
                     f"Code d'erreur : {error_code}."
                 )
 
-        # --------------------------------------------------
-        # Machine learning monitoring facts
-        # --------------------------------------------------
+        # =========================================================
+        # Tool 2: get_model_metrics
+        # =========================================================
 
         elif (
             name == "get_model_metrics"
             and isinstance(data, dict)
         ):
+
             model_id = _identifier(
                 data.get("model_id")
             )
@@ -143,15 +182,18 @@ def compose_grounded_answer(
                     f"{invalid_rate}."
                 )
 
-        # --------------------------------------------------
-        # Runbook facts
-        # --------------------------------------------------
+        # =========================================================
+        # Tool 3: search_runbook
+        # =========================================================
 
         elif (
             name == "search_runbook"
             and isinstance(data, list)
         ):
+
+            # Limit the number of displayed runbooks.
             for runbook in data[:3]:
+
                 if not isinstance(runbook, dict):
                     continue
 
@@ -164,12 +206,27 @@ def compose_grounded_answer(
                         f"Procédure consultée : {runbook_id}."
                     )
 
-        # --------------------------------------------------
-        # Incident ticket proposal
-        #
-        # A proposal is NOT a creation or approval.
-        # All conditions are combined to avoid SIM102.
-        # --------------------------------------------------
+                # ---------------------------------------------
+                # Human escalation safeguard
+                #
+                # An explicit approval requirement from
+                # verified runbook data must be mentioned
+                # even when the model omits it.
+                # ---------------------------------------------
+
+                if (
+                    runbook.get("human_approval_required")
+                    is True
+                ):
+                    facts.append(
+                        "La procédure consultée indique "
+                        "qu'une validation humaine "
+                        "est requise."
+                    )
+
+        # =========================================================
+        # Tool 4: prepare_incident_ticket
+        # =========================================================
 
         elif (
             name == "prepare_incident_ticket"
@@ -178,6 +235,7 @@ def compose_grounded_answer(
             and data.get("ticket_created") is False
             and data.get("human_approval_required") is True
         ):
+
             proposal_only = True
 
             incident_id = _identifier(
@@ -197,9 +255,9 @@ def compose_grounded_answer(
                 "est nécessaire."
             )
 
-    # ------------------------------------------------------
+    # -------------------------------------------------------------
     # Build the verified facts section.
-    # ------------------------------------------------------
+    # -------------------------------------------------------------
 
     verified_section = ""
 
@@ -212,11 +270,12 @@ def compose_grounded_answer(
             )
         )
 
-    # ------------------------------------------------------
-    # Security rule 1:
-    # Never use free-form model claims to describe the
-    # execution outcome of an incident ticket proposal.
-    # ------------------------------------------------------
+    # =============================================================
+    # SECURITY RULE 1
+    #
+    # Never allow free-form LLM text to claim that a proposed
+    # incident ticket has been created or approved.
+    # =============================================================
 
     if proposal_only:
         return (
@@ -227,13 +286,15 @@ def compose_grounded_answer(
             "humaine distincte."
         )
 
-    # ------------------------------------------------------
-    # Security rule 2:
-    # Block unsupported ticket creation or approval claims,
-    # including when no tools were executed successfully.
-    # ------------------------------------------------------
+    # =============================================================
+    # SECURITY RULE 2
+    #
+    # Reject unsupported ticket creation or approval claims.
+    # This protection also applies when no tool succeeded.
+    # =============================================================
 
     if "UNVERIFIED_TICKET_ACTION" in issues:
+
         safe_message = (
             "Aucune création ni approbation de ticket "
             "n'a été exécutée par cet agent. "
@@ -249,13 +310,14 @@ def compose_grounded_answer(
 
         return safe_message
 
-    # ------------------------------------------------------
-    # Security rule 3:
-    # Hide generated analysis if another potential
-    # contradiction was detected.
-    # ------------------------------------------------------
+    # =============================================================
+    # SECURITY RULE 3
+    #
+    # Hide generated analysis when contradictions are detected.
+    # =============================================================
 
     if issues:
+
         warning = (
             "L'analyse générée a été masquée car "
             "une contradiction potentielle a été détectée."
@@ -270,19 +332,51 @@ def compose_grounded_answer(
 
         return warning
 
-    # ------------------------------------------------------
-    # No verified facts and no detected contradiction.
-    # ------------------------------------------------------
+    # =============================================================
+    # SECURITY RULE 4
+    #
+    # No verified facts available.
+    #
+    # Do not return an English answer to a French question.
+    # Use a deterministic French response for ticket requests.
+    # =============================================================
 
     if not facts:
-        return generated_answer
 
-    # ------------------------------------------------------
-    # Add the generated analysis only if it is detected
-    # as French and no contradiction was found.
-    # ------------------------------------------------------
+        # Preserve valid French responses.
+        if detect_language(generated_answer) == "fr":
+            return generated_answer
+
+        # Ticket-related questions get a safe French fallback.
+        if re.search(
+            r"ticket|approuv|approb",
+            question,
+            flags=re.IGNORECASE,
+        ):
+            return (
+                "Cet agent ne peut ni créer ni approuver "
+                "de ticket. Aucune action de ce type "
+                "n'a été exécutée par cet agent. "
+                "Une validation humaine est nécessaire."
+            )
+
+        # General fallback when language is not confirmed.
+        return (
+            "La réponse générée n'a pas été reprise : "
+            "son respect du français n'a pas été confirmé."
+        )
+
+    # =============================================================
+    # SECURITY RULE 5
+    #
+    # Add free-form generated analysis only when:
+    # - Verified facts are available.
+    # - No contradiction was detected.
+    # - The answer is confidently detected as French.
+    # =============================================================
 
     if detect_language(generated_answer) == "fr":
+
         return (
             verified_section
             + "\n\nAnalyse générée par le modèle "
@@ -290,10 +384,12 @@ def compose_grounded_answer(
             + generated_answer
         )
 
-    # ------------------------------------------------------
-    # Preserve verified facts if the model's generated
-    # response is not confidently detected as French.
-    # ------------------------------------------------------
+    # =============================================================
+    # SECURITY RULE 6
+    #
+    # If language detection fails, preserve verified facts
+    # and reject the generated analysis.
+    # =============================================================
 
     return (
         verified_section

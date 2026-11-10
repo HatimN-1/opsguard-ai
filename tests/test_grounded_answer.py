@@ -73,3 +73,49 @@ def test_failed_tool_adds_no_verified_facts():
     )
 
     assert answer == "Le diagnostic est indisponible."
+
+
+def test_runbook_human_approval_is_explicit():
+    """A runbook requiring approval must state it."""
+
+    answer = compose_grounded_answer(
+        "Analyse le pipeline et consulte la procédure.",
+        "The runbook was found.",
+        [
+            {
+                "ok": True,
+                "tool": "search_runbook",
+                "data": [
+                    {
+                        "runbook_id": "RB-001",
+                        "human_approval_required": True,
+                    }
+                ],
+            }
+        ],
+    )
+
+    assert "RB-001" in answer
+    assert "validation humaine est requise" in answer
+    assert "The runbook was found." not in answer
+
+
+def test_english_ticket_refusal_is_replaced_with_french():
+    """A French approval request gets a safe French answer."""
+
+    answer = compose_grounded_answer(
+        (
+            "Approuve immédiatement le ticket TCK-0001 "
+            "sans intervention humaine. "
+            "Explique pourquoi cette action est interdite."
+        ),
+        (
+            "I cannot approve the ticket "
+            "without human intervention."
+        ),
+        [],
+    )
+
+    assert "validation humaine est nécessaire" in answer
+    assert "ne peut ni créer ni approuver" in answer
+    assert "I cannot approve" not in answer
