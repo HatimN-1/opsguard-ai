@@ -1,4 +1,3 @@
-
 """Controlled LLM tool-calling orchestrator for OpsGuard AI."""
 
 import json
@@ -10,24 +9,12 @@ from httpx import HTTPError
 from ollama import Client, ResponseError
 
 from app.agent.grounded_answer import compose_grounded_answer
-from app.agent.llm_client import (
-    OLLAMA_HOST,
-    OLLAMA_MODEL,
-    SYSTEM_PROMPT,
-)
-from app.agent.observability import record_agent_trace
+from app.agent.llm_client import OLLAMA_HOST, OLLAMA_MODEL, SYSTEM_PROMPT
+from app.agent.observability import make_agent_event, record_agent_trace
 from app.agent.tool_registry import TOOL_SCHEMAS, execute_tool
-
-# ---------------------------------------------------------------------
-# Agent execution limits
-# ---------------------------------------------------------------------
 
 MAX_TOOL_CALLS = 4
 
-
-# ---------------------------------------------------------------------
-# Invalid LLM response handling
-# ---------------------------------------------------------------------
 
 class InvalidLLMResponseError(Exception):
     """Raised when Ollama returns a malformed response."""
@@ -35,79 +22,27 @@ class InvalidLLMResponseError(Exception):
 
 def _validated_message(response: Any) -> Any:
     """Validate the structure of a response from Ollama."""
-
-    message = getattr(
-        response,
-        "message",
-        None,
-    )
-
+    message = getattr(response, "message", None)
     if message is None:
-        raise InvalidLLMResponseError(
-            "Missing Ollama message"
-        )
+        raise InvalidLLMResponseError("Missing Ollama message")
 
-    content = getattr(
-        message,
-        "content",
-        None,
-    )
+    content = getattr(message, "content", None)
+    calls = getattr(message, "tool_calls", None)
 
-    calls = getattr(
-        message,
-        "tool_calls",
-        None,
-    )
+    if content is not None and not isinstance(content, str):
+        raise InvalidLLMResponseError("Invalid response content")
 
-    # Content must be a string or None.
-    if (
-        content is not None
-        and not isinstance(content, str)
-    ):
-        raise InvalidLLMResponseError(
-            "Invalid response content"
-        )
+    if calls is not None and not isinstance(calls, list):
+        raise InvalidLLMResponseError("Invalid tool calls structure")
 
-    # Tool calls must be a list or None.
-    if (
-        calls is not None
-        and not isinstance(calls, list)
-    ):
-        raise InvalidLLMResponseError(
-            "Invalid tool calls structure"
-        )
-
-    # Verify that each tool call contains
-    # a valid function name.
     for call in calls or []:
-
-        function = getattr(
-            call,
-            "function",
-            None,
-        )
-
-        name = getattr(
-            function,
-            "name",
-            None,
-        )
-
-        if (
-            not isinstance(name, str)
-            or not name.strip()
-            or len(name) > 80
-        ):
-            raise InvalidLLMResponseError(
-                "Invalid tool call structure"
-            )
+        function = getattr(call, "function", None)
+        name = getattr(function, "name", None)
+        if not isinstance(name, str) or not name.strip() or len(name) > 80:
+            raise InvalidLLMResponseError("Invalid tool call structure")
 
     return message
 
-
-# ---------------------------------------------------------------------
-# System prompt and safety instructions
-# ---------------------------------------------------------------------
 
 AGENT_PROMPT = SYSTEM_PROMPT + """
 You are OpsGuard AI, an MLOps tool-using agent.
@@ -147,41 +82,20 @@ SAFETY RULES:
 """
 
 
-# ---------------------------------------------------------------------
-# Ollama communication
-# ---------------------------------------------------------------------
-
-def _chat(
-    client: Client,
-    messages: list[Any],
-    tools: list[dict],
-):
+def _chat(client: Client, messages: list[Any], tools: list[dict]):
     """Call Ollama with bounded generation settings."""
-
     return client.chat(
         model=OLLAMA_MODEL,
         messages=messages,
         tools=tools,
         stream=False,
         think=False,
-        options={
-            "temperature": 0.0,
-            "num_predict": 256,
-        },
+        options={"temperature": 0.0, "num_predict": 256},
     )
 
 
-# ---------------------------------------------------------------------
-# Standard agent result
-# ---------------------------------------------------------------------
-
-def _result(
-    status: str,
-    answer: str,
-    trace: list[dict],
-) -> dict:
+def _result(status: str, answer: str, trace: list[dict]) -> dict:
     """Build the standard agent response."""
-
     return {
         "status": status,
         "answer": answer,
@@ -191,430 +105,191 @@ def _result(
     }
 
 
-# ---------------------------------------------------------------------
-# Internal agent execution
-# ---------------------------------------------------------------------
-
 def _run_agent_impl(
     question: str,
     *,
     client: Client | None = None,
     max_steps: int = 3,
-    tool_observer: Callable[
-        [str, dict[str, Any]], None
-    ] | None = None,
+    tool_observer: Callable[[str, dict[str, Any]], None] | None = None,
+    events: list[dict[str, Any]] | None = None,
 ) -> dict:
-    """Execute bounded and validated LLM tool-calling turns."""
-
-    # -------------------------------------------------------------
-    # Validate the user request
-    # -------------------------------------------------------------
-
+    """Execute bounded tool calls and collect safe lifecycle events."""
     if not isinstance(question, str) or not question.strip():
-        raise ValueError(
-            "Question cannot be empty"
-        )
-
+        raise ValueError("Question cannot be empty")
     if len(question) > 2000:
-        raise ValueError(
-            "Question is too long"
-        )
-
+        raise ValueError("Question is too long")
     if not 1 <= max_steps <= 3:
-        raise ValueError(
-            "max_steps must be between 1 and 3"
-        )
-
-    # -------------------------------------------------------------
-    # Initialize the local Ollama client
-    # -------------------------------------------------------------
+        raise ValueError("max_steps must be between 1 and 3")
 
     if client is None:
-        client = Client(
-            host=OLLAMA_HOST,
-            timeout=180.0,
-        )
-
-    # -------------------------------------------------------------
-    # Conversation context
-    # -------------------------------------------------------------
+        client = Client(host=OLLAMA_HOST, timeout=180.0)
 
     messages: list[Any] = [
-        {
-            "role": "system",
-            "content": AGENT_PROMPT,
-        },
-        {
-            "role": "user",
-            "content": question,
-        },
+        {"role": "system", "content": AGENT_PROMPT},
+        {"role": "user", "content": question},
     ]
-
-    # Safe public trace:
-    # tool names, success flags and error codes.
     trace: list[dict] = []
-
-    # Successful tool results kept in memory for grounding.
-    # Their contents are not written to JSONL logs.
     tool_results: list[dict] = []
 
-    # -------------------------------------------------------------
-    # Bounded agent execution
-    # -------------------------------------------------------------
+    def emit(
+        event_type: str,
+        *,
+        step: int | None = None,
+        tool: str | None = None,
+        ok: bool | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Record only whitelisted operational metadata."""
+        if events is not None:
+            events.append(
+                make_agent_event(
+                    event_type, step=step, tool=tool, ok=ok, error=error
+                )
+            )
+
+    def finish(status: str, answer: str) -> dict:
+        """Emit exactly one terminal outcome for each handled run."""
+        if status == "limit_reached":
+            emit("LIMIT_REACHED")
+        emit("AGENT_COMPLETED" if status == "completed" else "AGENT_FAILED")
+        return _result(status, answer, trace)
+
+    emit("AGENT_STARTED")
 
     try:
-        for _ in range(max_steps):
+        for step in range(1, max_steps + 1):
+            emit("LLM_REQUESTED", step=step)
+            response = _chat(client, messages, TOOL_SCHEMAS)
+            message = _validated_message(response)
+            emit("LLM_RESPONDED", step=step)
 
-            response = _chat(
-                client,
-                messages,
-                TOOL_SCHEMAS,
-            )
-
-            # Validate the LLM response before using it.
-            message = _validated_message(
-                response
-            )
-
-            calls = (
-                getattr(message, "tool_calls", None) or []
-            )
-
-            # -----------------------------------------------------
-            # Case 1: Model produces a final answer
-            # -----------------------------------------------------
+            calls = getattr(message, "tool_calls", None) or []
 
             if not calls:
-
-                answer = (
-                    getattr(message, "content", None) or ""
-                ).strip()
-
-                status = (
-                    "completed"
-                    if answer
-                    else "empty_response"
-                )
-
-                # Ground the response in verified tool data
-                # and apply contradiction safeguards.
+                answer = (getattr(message, "content", None) or "").strip()
                 if answer:
-                    answer = compose_grounded_answer(
-                        question,
-                        answer,
-                        tool_results,
-                    )
-
-                return _result(
-                    status,
-                    answer,
-                    trace,
-                )
-
-            # -----------------------------------------------------
-            # Maximum number of tool calls
-            # -----------------------------------------------------
+                    answer = compose_grounded_answer(question, answer, tool_results)
+                return finish("completed" if answer else "empty_response", answer)
 
             if len(trace) + len(calls) > MAX_TOOL_CALLS:
+                return finish("limit_reached", "Maximum tool call limit reached.")
 
-                return _result(
-                    "limit_reached",
-                    "Maximum tool call limit reached.",
-                    trace,
-                )
-
-            # Add assistant message with its tool requests.
             messages.append(message)
 
-            # -----------------------------------------------------
-            # Execute requested tools
-            # -----------------------------------------------------
-
             for call in calls:
+                name = call.function.name
+                arguments = getattr(call.function, "arguments", None)
+                emit("TOOL_REQUESTED", step=step, tool=name)
 
-                name = (
-                    call.function.name
-                )
-
-                arguments = getattr(
-                    call.function,
-                    "arguments",
-                    None,
-                )
-
-                # -------------------------------------------------
-                # Validate argument structure
-                # -------------------------------------------------
-
-                if not isinstance(
-                    arguments,
-                    dict,
-                ):
+                if not isinstance(arguments, dict):
                     result = {
                         "ok": False,
                         "tool": name,
                         "error": "INVALID_ARGUMENTS",
                     }
-
                 else:
                     try:
-                        result = execute_tool(
-                            name,
-                            arguments,
-                        )
-
-                        # Reject malformed tool results
-                        # before using or logging them.
+                        result = execute_tool(name, arguments)
                         if (
                             not isinstance(result, dict)
-                            or not isinstance(
-                                result.get("ok"),
-                                bool,
-                            )
+                            or not isinstance(result.get("ok"), bool)
                         ):
-                            raise TypeError(
-                                "Invalid tool result"
-                            )
-
+                            raise TypeError("Invalid tool result")
                     except Exception:  # noqa: BLE001
-                        # The tool boundary isolates failures.
-                        # Never expose internal exception details
-                        # in the agent response or trace.
+                        # Tool failures must not leak internal exception details.
                         result = {
                             "ok": False,
                             "tool": name,
                             "error": "TOOL_EXECUTION_ERROR",
                         }
 
-
-                # -------------------------------------------------
-                # Optional observer for evaluation
-                #
-                # Arguments are NOT written to JSONL logs.
-                # -------------------------------------------------
-
                 if tool_observer is not None:
-
                     tool_observer(
                         name,
-                        arguments.copy()
-                        if isinstance(
-                            arguments,
-                            dict,
-                        )
-                        else {},
+                        arguments.copy() if isinstance(arguments, dict) else {},
                     )
-
-                # -------------------------------------------------
-                # Preserve successful tool data in memory
-                # -------------------------------------------------
 
                 if result.get("ok") is True:
-                    tool_results.append(
-                        result
-                    )
-
-                # -------------------------------------------------
-                # Record safe tool execution metadata
-                # -------------------------------------------------
+                    tool_results.append(result)
 
                 trace.append({
                     "tool": name,
-                    "ok": result.get(
-                        "ok",
-                        False,
-                    ),
-                    "error": result.get(
-                        "error"
-                    ),
+                    "ok": result.get("ok", False),
+                    "error": result.get("error"),
                 })
 
-                # -------------------------------------------------
-                # Return the tool result to Ollama
-                # -------------------------------------------------
+                emit(
+                    "TOOL_COMPLETED",
+                    step=step,
+                    tool=name,
+                    ok=result.get("ok") is True,
+                    error=result.get("error"),
+                )
 
                 messages.append({
                     "role": "tool",
                     "tool_name": name,
-                    "content": json.dumps(
-                        result,
-                        ensure_ascii=False,
-                    ),
+                    "content": json.dumps(result, ensure_ascii=False),
                 })
 
-        # ---------------------------------------------------------
-        # Maximum reasoning steps reached
-        #
-        # Ask the model for a final answer with no tools.
-        # ---------------------------------------------------------
+        # A final response is allowed after the configured tool-calling steps.
+        # No additional tools are exposed in this final call.
+        final_step = max_steps + 1
+        emit("LLM_REQUESTED", step=final_step)
+        response = _chat(client, messages, [])
+        message = _validated_message(response)
+        emit("LLM_RESPONDED", step=final_step)
 
-        response = _chat(
-            client,
-            messages,
-            [],
-        )
-
-        # Validate the final LLM response.
-        message = _validated_message(
-            response
-        )
-
-        # No additional tool calls are allowed.
         if getattr(message, "tool_calls", None):
+            return finish("limit_reached", "Agent requested more tools than allowed.")
 
-            return _result(
-                "limit_reached",
-                "Agent requested more tools than allowed.",
-                trace,
-            )
-
-        answer = (
-            getattr(message, "content", None) or ""
-        ).strip()
-
-        status = (
-            "completed"
-            if answer
-            else "empty_response"
-        )
-
-        # ---------------------------------------------------------
-        # Ground final answer in actual tool results
-        # ---------------------------------------------------------
-
+        answer = (getattr(message, "content", None) or "").strip()
         if answer:
-            answer = compose_grounded_answer(
-                question,
-                answer,
-                tool_results,
-            )
+            answer = compose_grounded_answer(question, answer, tool_results)
 
-        return _result(
-            status,
-            answer,
-            trace,
-        )
-
-    # -------------------------------------------------------------
-    # Handle malformed LLM responses
-    # -------------------------------------------------------------
+        return finish("completed" if answer else "empty_response", answer)
 
     except InvalidLLMResponseError:
+        return finish("invalid_response", "Ollama returned an invalid response.")
+    except (ResponseError, HTTPError) as exc:
+        return finish("llm_error", f"Ollama request failed: {type(exc).__name__}")
 
-        return _result(
-            "invalid_response",
-            "Ollama returned an invalid response.",
-            trace,
-        )
-
-    # -------------------------------------------------------------
-    # Handle Ollama timeouts and HTTP errors
-    # -------------------------------------------------------------
-
-    except (
-        ResponseError,
-        HTTPError,
-    ) as exc:
-
-        return _result(
-            "llm_error",
-            (
-                "Ollama request failed: "
-                f"{type(exc).__name__}"
-            ),
-            trace,
-        )
-
-
-# ---------------------------------------------------------------------
-# Public agent function with observability
-# ---------------------------------------------------------------------
 
 def run_agent(
     question: str,
     *,
     client: Client | None = None,
     max_steps: int = 3,
-    tool_observer: Callable[
-        [str, dict[str, Any]], None
-    ] | None = None,
+    tool_observer: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> dict:
-    """Run the agent and record execution metadata."""
-
-    # -------------------------------------------------------------
-    # Identify the execution mode
-    #
-    # A provided client is marked as injected_client.
-    # Otherwise, the default local Ollama client is used.
-    #
-    # This identifies the invocation mode, not proof
-    # that an actual model request completed.
-    # -------------------------------------------------------------
-
-    execution_mode = (
-        "injected_client"
-        if client is not None
-        else "local_ollama"
-    )
-
-    # -------------------------------------------------------------
-    # Measure execution latency
-    # -------------------------------------------------------------
-
+    """Run the agent and persist a correlated event timeline."""
+    execution_mode = "injected_client" if client is not None else "local_ollama"
+    events: list[dict[str, Any]] = []
     start = perf_counter()
-
-    # -------------------------------------------------------------
-    # Run the internal agent
-    # -------------------------------------------------------------
 
     result = _run_agent_impl(
         question,
         client=client,
         max_steps=max_steps,
         tool_observer=tool_observer,
+        events=events,
     )
 
-    elapsed_ms = (
-        perf_counter() - start
-    ) * 1000
-
-    # -------------------------------------------------------------
-    # Save safe execution metadata to local JSONL
-    # -------------------------------------------------------------
-
+    elapsed_ms = (perf_counter() - start) * 1000
     return record_agent_trace(
         result,
         elapsed_ms,
         execution_mode=execution_mode,
+        events=events,
     )
 
 
-# ---------------------------------------------------------------------
-# Local execution
-# ---------------------------------------------------------------------
-
 if __name__ == "__main__":
-
     question = (
         "Analyse le pipeline etl_orders_daily. "
         "Pourquoi a-t-il échoué ? "
         "Consulte la procédure correspondante."
     )
-
-    print(
-        "OpsGuard AI - Agent Orchestrator"
-    )
-
+    print("OpsGuard AI - Agent Orchestrator")
     print("-" * 45)
-
-    output = run_agent(
-        question
-    )
-
-    print(
-        json.dumps(
-            output,
-            indent=2,
-            ensure_ascii=False,
-        )
-    )
+    print(json.dumps(run_agent(question), indent=2, ensure_ascii=False))

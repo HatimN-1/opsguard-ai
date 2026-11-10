@@ -4,6 +4,8 @@
 import json
 from unittest.mock import Mock
 
+import pytest
+
 from app.agent import observability
 from app.agent.orchestrator import run_agent
 
@@ -71,3 +73,63 @@ def test_logging_failure_does_not_break_agent(
 
     assert result["status"] == "completed"
     assert result["trace_id"]
+
+def test_event_timeline_contains_safe_metadata(tmp_path):
+    """The timeline must never persist private content."""
+
+    trace_file = tmp_path / "events.jsonl"
+
+    event = observability.make_agent_event(
+        "TOOL_COMPLETED",
+        step=1,
+        tool="get_pipeline_status",
+        ok=True,
+    )
+
+    # Simulate accidentally supplied sensitive metadata.
+    event["question"] = "PRIVATE_QUESTION"
+    event["answer"] = "PRIVATE_ANSWER"
+    event["arguments"] = {
+        "secret": "PRIVATE_SECRET",
+    }
+
+    observability.record_agent_trace(
+        {
+            "status": "completed",
+            "model": "qwen3:1.7b",
+            "tools_used": [],
+            "tool_call_count": 0,
+            "answer": "PRIVATE_ANSWER",
+        },
+        latency_ms=25.5,
+        path=trace_file,
+        events=[event],
+    )
+
+    contents = trace_file.read_text(
+        encoding="utf-8",
+    )
+
+    trace = json.loads(contents)
+
+    assert trace["event_count"] == 1
+    assert trace["events"][0]["event_type"] == (
+        "TOOL_COMPLETED"
+    )
+    assert trace["events"][0]["tool"] == (
+        "get_pipeline_status"
+    )
+    assert trace["events"][0]["ok"] is True
+
+    assert "PRIVATE_QUESTION" not in contents
+    assert "PRIVATE_ANSWER" not in contents
+    assert "PRIVATE_SECRET" not in contents
+
+
+def test_invalid_event_type_is_rejected():
+    """Unknown event types must not enter the timeline."""
+
+    with pytest.raises(ValueError):
+        observability.make_agent_event(
+            "DELETE_INFRASTRUCTURE",
+        )
