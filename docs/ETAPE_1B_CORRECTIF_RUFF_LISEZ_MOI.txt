@@ -1,0 +1,14 @@
+OpsGuard AI — Correctif de style Ruff (audit des traces etape 1B)
+
+Ce ZIP ne contient qu'un script d'audit ; il ne modifie ni logs ni agent.
+Installez-le depuis la racine opsguard-ai avec Expand-Archive -Force.
+Puis executez :
+
+  python -m ruff check scripts/audit_fresh_trace_quality_readonly.py tests/test_audit_fresh_trace_quality.py
+  python -m pytest -q tests/test_audit_fresh_trace_quality.py
+  python .\scripts\audit_fresh_trace_quality_readonly.py
+
+Correctifs : re.IGNORECASE, conversion ISO 8601, deux tests if simplifies.
+Le parseur ISO 8601 doit etre Python >= 3.11 (projet utilise datetime.UTC).
+
+Ne relancez pas --mark ; ne modifiez pas les traces historiques.

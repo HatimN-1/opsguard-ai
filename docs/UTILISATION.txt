@@ -1,0 +1,13 @@
+OpsGuard AI — inspection complementaire des traces, en lecture seule
+
+Installation : decompresser a la racine du depot.
+
+python .\scripts\inspect_trace_schema_readonly.py --source .\logs\agent_traces.jsonl --output .\outputs\trace_schema_report.json
+if ($LASTEXITCODE -ne 0) { throw "Diagnostic schema impossible" }
+
+Ce programme n'affiche jamais les prompts, reponses, Run IDs, arguments ou valeurs
+metier. Il indique quels champs sont presents dans TOOL_REQUESTED / TOOL_COMPLETED
+et leur type, dans le but de comprendre l'ecart 27 vs 1239.
+
+Pour l'audit officiel et sa definition exacte, inspecter le code versionne
+scripts/audit_project3_traces.py. Ne pas modifier les traces historiques.

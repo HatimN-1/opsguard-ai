@@ -1,0 +1,813 @@
+{
+  "catalog_version": "1.0.0",
+  "organization": "Northstar Retail Data Platform (entreprise fictive)",
+  "cloud_platform": "Azure Data Factory (simulé)",
+  "immutable_pipeline_count": 12,
+  "description": "Catalogue métier stable : seuls les journaux et exécutions évoluent.",
+  "pipelines": [
+    {
+      "pipeline_id": "adf_01_orders",
+      "display_name": "Commandes — ingestion",
+      "domain": "orders",
+      "business_goal": "Assurer la fiabilité des données orders de ERP Orders SQL vers ADLS Gen2 Bronze / Orders.",
+      "source_system": "ERP Orders SQL",
+      "target_system": "ADLS Gen2 Bronze / Orders",
+      "frequency": "Toutes les heures",
+      "owner_team": "Data Engineering",
+      "criticality": "HIGH",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_02_customers",
+      "display_name": "Clients — synchronisation CRM",
+      "domain": "customers",
+      "business_goal": "Assurer la fiabilité des données customers de CRM SQL / API vers ADLS Gen2 Silver / Customers.",
+      "source_system": "CRM SQL / API",
+      "target_system": "ADLS Gen2 Silver / Customers",
+      "frequency": "Toutes les 4 h",
+      "owner_team": "Customer Data",
+      "criticality": "MEDIUM",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_03_payments",
+      "display_name": "Paiements — rapprochement",
+      "domain": "payments",
+      "business_goal": "Assurer la fiabilité des données payments de Payment Gateway API vers Synapse / Payments.",
+      "source_system": "Payment Gateway API",
+      "target_system": "Synapse / Payments",
+      "frequency": "Toutes les heures",
+      "owner_team": "Finance Data",
+      "criticality": "CRITICAL",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_04_inventory",
+      "display_name": "Stocks — inventaire entrepôt",
+      "domain": "inventory",
+      "business_goal": "Assurer la fiabilité des données inventory de WMS / Entrepôts vers Delta Lake / Inventory.",
+      "source_system": "WMS / Entrepôts",
+      "target_system": "Delta Lake / Inventory",
+      "frequency": "Toutes les 2 h",
+      "owner_team": "Supply Chain Data",
+      "criticality": "HIGH",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_05_orders",
+      "display_name": "Commandes — retours",
+      "domain": "orders",
+      "business_goal": "Assurer la fiabilité des données orders de ERP Returns SQL vers ADLS Gen2 Silver / Returns.",
+      "source_system": "ERP Returns SQL",
+      "target_system": "ADLS Gen2 Silver / Returns",
+      "frequency": "Chaque jour",
+      "owner_team": "Commerce Data",
+      "criticality": "MEDIUM",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_06_customers",
+      "display_name": "Clients — préférences",
+      "domain": "customers",
+      "business_goal": "Assurer la fiabilité des données customers de Customer Preferences API vers Delta Lake / Customer Profile.",
+      "source_system": "Customer Preferences API",
+      "target_system": "Delta Lake / Customer Profile",
+      "frequency": "Chaque jour",
+      "owner_team": "Customer Data",
+      "criticality": "MEDIUM",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_07_payments",
+      "display_name": "Paiements — réconciliation bancaire",
+      "domain": "payments",
+      "business_goal": "Assurer la fiabilité des données payments de Bank SFTP / CSV vers Synapse / Settlements.",
+      "source_system": "Bank SFTP / CSV",
+      "target_system": "Synapse / Settlements",
+      "frequency": "Chaque jour",
+      "owner_team": "Finance Data",
+      "criticality": "CRITICAL",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_08_inventory",
+      "display_name": "Stocks — prévisions",
+      "domain": "inventory",
+      "business_goal": "Assurer la fiabilité des données inventory de Warehouse SQL + Demand API vers Delta Lake / Forecast Inputs.",
+      "source_system": "Warehouse SQL + Demand API",
+      "target_system": "Delta Lake / Forecast Inputs",
+      "frequency": "Chaque jour",
+      "owner_team": "Supply Chain Data",
+      "criticality": "HIGH",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_09_orders",
+      "display_name": "Commandes — expédition",
+      "domain": "orders",
+      "business_goal": "Assurer la fiabilité des données orders de Order Management SQL vers ADLS Gen2 Silver / Fulfilment.",
+      "source_system": "Order Management SQL",
+      "target_system": "ADLS Gen2 Silver / Fulfilment",
+      "frequency": "Toutes les 2 h",
+      "owner_team": "Logistics Data",
+      "criticality": "HIGH",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_10_customers",
+      "display_name": "Clients — fidélité",
+      "domain": "customers",
+      "business_goal": "Assurer la fiabilité des données customers de Loyalty Platform API vers Synapse / Customer Loyalty.",
+      "source_system": "Loyalty Platform API",
+      "target_system": "Synapse / Customer Loyalty",
+      "frequency": "Chaque jour",
+      "owner_team": "Customer Data",
+      "criticality": "MEDIUM",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_11_payments",
+      "display_name": "Paiements — signaux de fraude",
+      "domain": "payments",
+      "business_goal": "Assurer la fiabilité des données payments de Payment Events Stream vers Delta Lake / Fraud Features.",
+      "source_system": "Payment Events Stream",
+      "target_system": "Delta Lake / Fraud Features",
+      "frequency": "Toutes les heures",
+      "owner_team": "Risk Analytics",
+      "criticality": "CRITICAL",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    },
+    {
+      "pipeline_id": "adf_12_inventory",
+      "display_name": "Stocks — réapprovisionnement",
+      "domain": "inventory",
+      "business_goal": "Assurer la fiabilité des données inventory de WMS + Supplier API vers Synapse / Replenishment.",
+      "source_system": "WMS + Supplier API",
+      "target_system": "Synapse / Replenishment",
+      "frequency": "Chaque jour",
+      "owner_team": "Supply Chain Data",
+      "criticality": "HIGH",
+      "workflow": [
+        {
+          "name": "LookupSourceMetadata",
+          "activity_type": "Lookup",
+          "linked_service": "ls_onprem_sql",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "InspectLandingFolder",
+          "activity_type": "GetMetadata",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToBronze",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_file_system",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "ValidateAndNormalize",
+          "activity_type": "DataFlow",
+          "linked_service": "ls_adls_gen2",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "CopyToSilver",
+          "activity_type": "Copy",
+          "linked_service": "ls_onprem_odbc",
+          "integration_runtime": "shir-demo-east"
+        },
+        {
+          "name": "EnrichDeltaTable",
+          "activity_type": "DatabricksNotebook",
+          "linked_service": "ls_azure_databricks",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "StartDownstream",
+          "activity_type": "ExecutePipeline",
+          "linked_service": "ls_adf_orchestration",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "MergeWarehouse",
+          "activity_type": "StoredProcedure",
+          "linked_service": "ls_synapse_sql",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        },
+        {
+          "name": "NotifyOperations",
+          "activity_type": "WebActivity",
+          "linked_service": "ls_partner_api",
+          "integration_runtime": "AutoResolveIntegrationRuntime"
+        }
+      ]
+    }
+  ]
+}
