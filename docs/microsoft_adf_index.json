@@ -1,0 +1,280 @@
+[
+  {
+    "id": "MS-ADF-2003",
+    "title": "Limitation des activités externes concurrentes",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide",
+    "service": "Azure Data Factory",
+    "codes": [
+      "2003"
+    ],
+    "keywords": [
+      "throttling",
+      "concurrency",
+      "concurrent",
+      "external activity",
+      "limite",
+      "concurrence",
+      "pipeline",
+      "trigger"
+    ],
+    "summary_fr": "Microsoft documente un échec lié à un excès d'activités externes exécutées simultanément au niveau de l'abonnement ou de la région.",
+    "checks_fr": [
+      "Comparer le nombre d'activités concurrentes aux quotas applicables.",
+      "Examiner les déclencheurs et étaler les horaires des pipelines.",
+      "Vérifier les limites et quotas Azure Data Factory avant toute modification."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-2010",
+    "title": "Runtime d'intégration auto-hébergé indisponible",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide",
+    "service": "Azure Data Factory",
+    "codes": [
+      "2010"
+    ],
+    "keywords": [
+      "self-hosted",
+      "integration runtime",
+      "offline",
+      "SHIR",
+      "runtime",
+      "connexion",
+      "agent"
+    ],
+    "summary_fr": "Microsoft décrit les erreurs produites lorsque le runtime d'intégration auto-hébergé est hors ligne ou non enregistré correctement.",
+    "checks_fr": [
+      "Contrôler l'état du runtime dans Azure Data Factory.",
+      "Examiner le service local et les journaux du runtime.",
+      "Vérifier les exigences de réseau, d'enregistrement et les autorisations."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-2105",
+    "title": "Type de paramètre inattendu",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide",
+    "service": "Azure Data Factory",
+    "codes": [
+      "2105"
+    ],
+    "keywords": [
+      "expected type",
+      "value type",
+      "key",
+      "parameter",
+      "schema",
+      "datatype",
+      "type de donnée",
+      "parametre"
+    ],
+    "summary_fr": "La documentation Microsoft décrit des erreurs de valeur dont le type ne correspond pas au type attendu pour un paramètre ou une clé.",
+    "checks_fr": [
+      "Comparer les types attendus et fournis dans les paramètres.",
+      "Revoir les expressions et conversions de types des activités.",
+      "Valider les paramètres sur un échantillon avant relance."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-3200",
+    "title": "Échec d'accès à Azure Databricks (403)",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide",
+    "service": "Azure Data Factory / Azure Databricks",
+    "codes": [
+      "3200"
+    ],
+    "keywords": [
+      "databricks",
+      "token",
+      "expired",
+      "403",
+      "authentification",
+      "access",
+      "linked service"
+    ],
+    "summary_fr": "Microsoft associe notamment le code 3200 et une réponse 403 à un jeton d'accès Databricks expiré dans un service lié.",
+    "checks_fr": [
+      "Vérifier l'état du mécanisme d'authentification Databricks associé au service lié.",
+      "Contrôler les droits et la date d'expiration des identifiants sans exposer leur valeur.",
+      "Faire mettre à jour le service lié par un opérateur autorisé si nécessaire."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-3201",
+    "title": "Chemin de notebook Databricks incorrect",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide",
+    "service": "Azure Data Factory / Azure Databricks",
+    "codes": [
+      "3201"
+    ],
+    "keywords": [
+      "databricks",
+      "notebook",
+      "notebook_path",
+      "cluster",
+      "path",
+      "task",
+      "configuration"
+    ],
+    "summary_fr": "Le guide Microsoft associe le code 3201 à certaines erreurs de définition de tâche Databricks, notamment un chemin de notebook manquant ou un cluster inexistant.",
+    "checks_fr": [
+      "Vérifier le chemin du notebook configuré dans l'activité.",
+      "Contrôler l'existence du cluster cible et l'accessibilité des ressources.",
+      "Valider la configuration de l'activité avant une nouvelle exécution."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-20000",
+    "title": "JRE manquante sur le runtime auto-hébergé",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/connector-troubleshoot-guide",
+    "service": "Azure Data Factory",
+    "codes": [
+      "20000"
+    ],
+    "keywords": [
+      "jre",
+      "java",
+      "parquet",
+      "orc",
+      "runtime",
+      "machine",
+      "JreNotFound"
+    ],
+    "summary_fr": "Microsoft explique que certaines activités de copie nécessitent un environnement Java sur le runtime auto-hébergé pour traiter Parquet ou ORC.",
+    "checks_fr": [
+      "Vérifier la disponibilité et la configuration de Java sur l'hôte du runtime.",
+      "Contrôler les versions compatibles indiquées dans la documentation.",
+      "Prévoir l'installation ou la correction par un administrateur autorisé."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-2200",
+    "title": "Échec ODBC pendant la copie",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/connector-troubleshoot-guide",
+    "service": "Azure Data Factory",
+    "codes": [
+      "2200"
+    ],
+    "keywords": [
+      "odbc",
+      "connection",
+      "authentication",
+      "copy",
+      "transport",
+      "firewall",
+      "network",
+      "connecteur"
+    ],
+    "summary_fr": "Le guide Microsoft décrit des problèmes de transfert ou d'authentification susceptibles d'interrompre une connexion ODBC durant une copie.",
+    "checks_fr": [
+      "Tester la connexion source et sa méthode d'authentification.",
+      "Contrôler les règles réseau et pare-feu applicables au connecteur.",
+      "Examiner les journaux d'activité pour confirmer la cause réelle."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-MONITOR",
+    "title": "Configurer les journaux Azure Data Factory dans Log Analytics",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/monitor-configure-diagnostics",
+    "service": "Azure Data Factory / Azure Monitor",
+    "codes": [],
+    "keywords": [
+      "monitor",
+      "log analytics",
+      "diagnostic",
+      "ADFPipelineRun",
+      "ADFActivityRun",
+      "workspace",
+      "collecte",
+      "logs",
+      "monitoring"
+    ],
+    "summary_fr": "Microsoft indique comment exporter les journaux d'activités, pipelines et déclencheurs vers un espace Log Analytics, de préférence dans des tables dédiées à la ressource.",
+    "checks_fr": [
+      "Vérifier que le paramètre de diagnostic de la fabrique est activé.",
+      "Contrôler la présence des tables ADFPipelineRun et ADFActivityRun.",
+      "Tenir compte du délai possible entre émission et disponibilité des événements."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-IR",
+    "title": "Examiner les journaux du self-hosted integration runtime",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/self-hosted-integration-runtime-troubleshoot-guide",
+    "service": "Azure Data Factory",
+    "codes": [],
+    "keywords": [
+      "integration runtime",
+      "self-hosted",
+      "SHIR",
+      "logs",
+      "runtime",
+      "diagnostic",
+      "réseau",
+      "network"
+    ],
+    "summary_fr": "Microsoft explique comment examiner les journaux liés à l'activité et au runtime auto-hébergé, notamment lors d'une défaillance de connexion.",
+    "checks_fr": [
+      "Ouvrir les exécutions des activités dans le moniteur ADF.",
+      "Examiner le journal du runtime d'intégration sur l'hôte concerné.",
+      "Vérifier disponibilité des instances du runtime et leur connectivité."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-3202",
+    "title": "Limitation des créations de jobs Azure Databricks",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide",
+    "service": "Azure Data Factory / Azure Databricks",
+    "codes": [
+      "3202"
+    ],
+    "keywords": [
+      "databricks",
+      "rate limit",
+      "1000",
+      "job creation",
+      "quota",
+      "jobs",
+      "concurrency"
+    ],
+    "summary_fr": "Microsoft documente le code 3202 lorsqu'un trop grand nombre de jobs Databricks ont été créés sur une fenêtre horaire.",
+    "checks_fr": [
+      "Examiner la fréquence de création de jobs provenant de plusieurs pipelines.",
+      "Identifier les activités qui contribuent au quota de l'espace de travail.",
+      "Répartir la charge ou adapter l'orchestration avec validation humaine."
+    ],
+    "kind": "official_summary"
+  },
+  {
+    "id": "MS-ADF-2108",
+    "title": "Échec d'appel Web, URL ou connectivité du runtime",
+    "url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide",
+    "service": "Azure Data Factory",
+    "codes": [
+      "2108"
+    ],
+    "keywords": [
+      "web activity",
+      "endpoint",
+      "url",
+      "network",
+      "dns",
+      "timeout",
+      "runtime",
+      "connectivité"
+    ],
+    "summary_fr": "Microsoft mentionne le code 2108 lorsque l'activité Web ne parvient pas à atteindre l'URL, en lien possible avec le réseau, la résolution DNS ou la configuration du runtime.",
+    "checks_fr": [
+      "Contrôler la validité et la disponibilité de l'URL cible.",
+      "Vérifier le runtime d'intégration et la connectivité réseau.",
+      "Contrôler DNS, certificats et délais d'expiration sans divulguer d'informations sensibles."
+    ],
+    "kind": "official_summary"
+  }
+]

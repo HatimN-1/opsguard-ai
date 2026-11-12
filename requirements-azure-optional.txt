@@ -1,0 +1,4 @@
+# Only needed for real Azure Monitor / Log Analytics access.
+# The external_demo mode works with the existing requirements.txt.
+azure-identity>=1.16,<2
+azure-monitor-query>=2,<3

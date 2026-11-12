@@ -1,0 +1,92 @@
+[
+  {
+    "code": "2003",
+    "activity_type": "ExecutePipeline",
+    "message": "There are substantial concurrent external activity executions. The subscription concurrency limit has been reached; reduce concurrent executions.",
+    "failure_type": "UserError",
+    "linked_service": "ls_adf_orchestration",
+    "integration_runtime": "AutoResolveIntegrationRuntime",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide"
+  },
+  {
+    "code": "2010",
+    "activity_type": "Copy",
+    "message": "The Self-hosted Integration Runtime 'shir-demo-east' is offline. Check the runtime status and connectivity.",
+    "failure_type": "UserError",
+    "linked_service": "ls_onprem_sql",
+    "integration_runtime": "shir-demo-east",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide"
+  },
+  {
+    "code": "2105",
+    "activity_type": "DataFlow",
+    "message": "The value type 'String', in key 'batchSize', is not the expected type 'Integer'. Review the dynamic expression output.",
+    "failure_type": "UserError",
+    "linked_service": "ls_adls_gen2",
+    "integration_runtime": "AutoResolveIntegrationRuntime",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide"
+  },
+  {
+    "code": "3200",
+    "activity_type": "DatabricksNotebook",
+    "message": "Error 403. Azure Databricks rejected the request; the linked service access token has expired.",
+    "failure_type": "UserError",
+    "linked_service": "ls_azure_databricks",
+    "integration_runtime": "AutoResolveIntegrationRuntime",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide"
+  },
+  {
+    "code": "3201",
+    "activity_type": "DatabricksNotebook",
+    "message": "Missing required field: settings.task.notebook_task.notebook_path. Specify a valid notebook path for the activity.",
+    "failure_type": "UserError",
+    "linked_service": "ls_azure_databricks",
+    "integration_runtime": "AutoResolveIntegrationRuntime",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide"
+  },
+  {
+    "code": "20000",
+    "activity_type": "Copy",
+    "message": "Java Runtime Environment cannot be found on the Self-hosted Integration Runtime machine. JRE is required for Parquet/ORC parsing.",
+    "failure_type": "UserError",
+    "linked_service": "ls_onprem_file_system",
+    "integration_runtime": "shir-demo-east",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/connector-troubleshoot-guide"
+  },
+  {
+    "code": "2200",
+    "activity_type": "Copy",
+    "message": "UserErrorOdbcOperationFailed. The underlying ODBC connection was closed unexpectedly while reading the source data.",
+    "failure_type": "UserError",
+    "linked_service": "ls_onprem_odbc",
+    "integration_runtime": "shir-demo-east",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/connector-troubleshoot-guide"
+  },
+  {
+    "code": "UNLISTED_AZURE_98765",
+    "activity_type": "Copy",
+    "message": "Synthetic unknown error: an unclassified source operation failed. No documented root cause is established.",
+    "failure_type": "Unknown",
+    "linked_service": "ls_external_source",
+    "integration_runtime": "AutoResolveIntegrationRuntime",
+    "source_url": null
+  },
+  {
+    "code": "3202",
+    "activity_type": "DatabricksNotebook",
+    "message": "There were already 1000 jobs created in the past 3600 seconds, exceeding the Databricks job creation rate limit.",
+    "failure_type": "UserError",
+    "linked_service": "ls_azure_databricks",
+    "integration_runtime": "AutoResolveIntegrationRuntime",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide"
+  },
+  {
+    "code": "2108",
+    "activity_type": "WebActivity",
+    "message": "Error calling the endpoint 'https://api.example.invalid/v1/orders'. Response status code: NA - Unknown. Verify URL and integration runtime connectivity.",
+    "failure_type": "UserError",
+    "linked_service": "ls_partner_api",
+    "integration_runtime": "AutoResolveIntegrationRuntime",
+    "source_url": "https://learn.microsoft.com/en-us/azure/data-factory/data-factory-troubleshoot-guide"
+  }
+]

@@ -1,979 +1,295 @@
+# OpsGuard AI — Agent MLOps d'investigation et de gouvernance
 
-<div align="center">
+**Projet 3 — Agent intelligent : orchestration d'outils, observabilité et gouvernance**
+**Cas d'étude : Northstar Retail (entreprise fictive)**
+**Stack : Python 3.12 · Streamlit · FastAPI · Ollama / Qwen3 1.7B · pytest · GitHub Actions**
 
-# 🛡️ OpsGuard AI
+> **Périmètre académique.** Les 12 pipelines Azure Data Factory (ADF) sont fictifs et figés dans un catalogue versionné. Les exécutions et erreurs sont représentées par des journaux **synthétiques** au format ADF. La démonstration n'exécute, ne redémarre, ne modifie ni ne supprime aucun pipeline Azure réel. Les rôles humains sont simulés et ne remplacent pas une authentification de production.
 
-### Intelligent MLOps Incident Management & Observability Agent
+## Sommaire
 
-**Diagnose · Monitor · Investigate · Govern**
+1. [Problème et objectifs](#1-problème-et-objectifs)
+2. [Architecture](#2-architecture)
+3. [Scénario métier et outils](#3-scénario-métier-et-outils)
+4. [Installation reproductible](#4-installation-reproductible)
+5. [Exécution et démonstration](#5-exécution-et-démonstration)
+6. [Tests, évaluations et résultats](#6-tests-évaluations-et-résultats)
+7. [Observabilité, sécurité et validation humaine](#7-observabilité-sécurité-et-validation-humaine)
+8. [Données, versions et reproductibilité](#8-données-versions-et-reproductibilité)
+9. [Limites et pistes d'amélioration](#9-limites-et-pistes-damélioration)
+10. [Organisation du dépôt](#10-organisation-du-dépôt)
 
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-REST_API-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Ollama](https://img.shields.io/badge/Ollama-Qwen3_1.7B-222222?style=for-the-badge)
-![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
+## 1. Problème et objectifs
 
-![Tests](https://img.shields.io/badge/Tests-117_Passing-2EA44F?style=flat-square)
-![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)
-![Execution](https://img.shields.io/badge/Execution-CPU_Compatible-6F42C1?style=flat-square)
-![Status](https://img.shields.io/badge/Status-Academic_Prototype-F59E0B?style=flat-square)
+Lorsqu'un pipeline ETL échoue, un opérateur doit identifier **quelle exécution** est concernée, **quelle activité** a échoué, **ce que les journaux démontrent réellement** et **quelles vérifications officielles** sont pertinentes. Un chatbot seul peut confondre plusieurs exécutions, inventer une cause racine ou proposer une action non autorisée.
 
----
+**OpsGuard AI** assiste cette investigation en combinant planification, consultation d'outils contrôlés, preuves structurées et synthèse locale par Qwen3. L'objectif n'est pas d'automatiser des interventions sur Azure : l'agent **lit, explique et prépare une proposition**, tandis que l'humain décide.
 
-**Un agent intelligent local pour le diagnostic d'incidents Data & ML, l'observabilité et la gestion contrôlée des opérations MLOps.**
+Objectifs évaluables : sélection pertinente des outils, exactitude des identifiants et codes observés, gestion des erreurs et requêtes hors périmètre, latence, traçabilité, refus des actions risquées et supervision humaine.
 
-[Présentation](#-présentation) ·
-[Architecture](#-architecture) ·
-[Installation](#-installation-rapide) ·
-[Fonctionnalités](#-fonctionnalités) ·
-[Dashboard](#-observabilité-et-dashboard) ·
-[Sécurité](#-sécurité-et-gouvernance) ·
-[Tests](#-tests-et-évaluation)
-
-</div>
-
----
-
-## <img src="https://api.iconify.design/lucide/target.svg?color=%2364748B" width="21" height="21" alt=""> Présentation
-
-**OpsGuard AI** est un prototype d'agent MLOps conçu pour assister le diagnostic, l'investigation et la gestion contrôlée des incidents affectant les pipelines de données et les modèles de Machine Learning.
-
-Le projet combine :
-
-- Un modèle de langage local **Qwen3 1.7B**, exécuté avec Ollama.
-- Une architecture d'agent utilisant le **tool calling**.
-- Quatre outils MLOps déterministes et validés.
-- Une API REST développée avec **FastAPI**.
-- Un tableau de bord d'observabilité avec **Streamlit**.
-- Une chronologie d'événements horodatés.
-- Des mécanismes de validation et de sécurité.
-- Une supervision humaine des actions sensibles.
-- Des évaluations automatisées et des scénarios adversariaux.
-- Une intégration continue avec GitHub Actions.
-
-### Objectif principal
-
-Développer un agent capable de consulter plusieurs sources MLOps, d'analyser un incident et de proposer une escalade humaine, sans disposer de permissions dangereuses sur l'infrastructure.
-
-> [!IMPORTANT]
-> **Environnement académique et simulé**
->
-> Les pipelines, métriques ML, incidents et runbooks utilisent des données simulées stockées localement.
->
-> OpsGuard AI n'est pas connecté à une infrastructure MLOps de production.
->
-> Les rôles de démonstration ne constituent pas une authentification sécurisée.
-
----
-
-## <img src="https://api.iconify.design/lucide/sparkles.svg?color=%2364748B" width="21" height="21" alt=""> Fonctionnalités
-
-| Module | Fonctionnalité | Technologie |
-|:---|:---|:---|
-| 🧠 Agent IA | Interprétation des demandes et sélection d'outils | Ollama + Qwen3 |
-| 🔄 Pipelines | Consultation et diagnostic des exécutions ETL | Python + JSON |
-| 📈 ML Monitoring | Analyse des métriques de modèles ML | Python |
-| 📚 Runbooks | Recherche de procédures de résolution | Recherche déterministe |
-| 🎫 Incidents | Proposition de tickets et validation simulée | Python + FastAPI |
-| 🛡️ Sécurité | Liste blanche, validation et restrictions | Pydantic |
-| 🔎 Observabilité | Traces, erreurs, latences et événements | JSONL |
-| 📊 Dashboard | KPI, filtres, graphiques et chronologie | Streamlit |
-| 🧪 Évaluation | Sélection d'outils, réponses et escalades | Python + pytest |
-| ⚙️ CI | Contrôles automatiques du code | GitHub Actions |
-| 📖 Gouvernance | Permissions, risques et supervision humaine | Documentation Markdown |
-
-### Principes de fonctionnement
-
-**Tool calling contrôlé**
-
-Le LLM propose un appel d'outil. L'application vérifie le nom de l'outil et valide les arguments avant toute exécution.
-
-**Données vérifiables**
-
-Les informations MLOps proviennent des fichiers JSON simulés, et non de valeurs inventées par le modèle.
-
-**Réponses fondées sur les faits**
-
-L'application peut restituer les faits vérifiés et écarter certaines réponses incohérentes ou non conformes à la langue demandée.
-
-**Actions sensibles supervisées**
-
-L'agent peut préparer une proposition de ticket, mais ne peut ni créer ni approuver automatiquement un ticket.
-
-**Observabilité locale**
-
-Les exécutions sont tracées à travers des événements structurés et consultables dans le dashboard.
-
----
-
-## <img src="https://api.iconify.design/lucide/network.svg?color=%2364748B" width="21" height="21" alt=""> Architecture
-
-L'architecture sépare la génération par le LLM, l'exécution des outils, la validation des réponses et l'observabilité.
+## 2. Architecture
 
 ```mermaid
 flowchart TD
-    U["👤 Utilisateur"]
-    API["🌐 FastAPI / Exécution locale"]
-    AG["🧠 Agent Orchestrateur"]
-    LLM["🤖 Ollama / Qwen3 1.7B"]
-    REG["🛡️ Registre d'outils validés"]
-
-    P["🔄 Pipeline Status"]
-    M["📈 Model Metrics"]
-    R["📚 Runbook Search"]
-    T["🎫 Ticket Proposal"]
-
-    G["✅ Grounding et contrôles"]
-    O["📝 Traces JSONL et événements"]
-    D["📊 Dashboard Streamlit"]
-
-    H["👤 Validation humaine"]
-    TK["🎟️ API de tickets simulés"]
-
-    U --> API
-    API --> AG
-    AG <--> LLM
-    AG --> REG
-
-    REG --> P
-    REG --> M
-    REG --> R
-    REG --> T
-
-    AG --> G
-    AG --> O
-    O --> D
-
-    U --> TK
-    H --> TK
-
-    classDef user fill:#DBEAFE,stroke:#2563EB,color:#1E3A8A;
-    classDef agent fill:#EDE9FE,stroke:#7C3AED,color:#4C1D95;
-    classDef tools fill:#D1FAE5,stroke:#059669,color:#065F46;
-    classDef safety fill:#FEF3C7,stroke:#D97706,color:#78350F;
-    classDef dashboard fill:#FCE7F3,stroke:#DB2777,color:#831843;
-
-    class U,API,H user;
-    class AG,LLM agent;
-    class P,M,R,T tools;
-    class REG,G,TK safety;
-    class O,D dashboard;
+    U[Utilisateur] --> UI[Interface Streamlit]
+    UI --> P[Plan d'investigation contrôlé]
+    P --> R[Registre d'outils / validation Pydantic]
+    R --> L[Lecture des journaux ADF synthétiques]
+    R --> D[Index local de références Microsoft Learn]
+    L --> F[Faits et preuves déterministes]
+    D --> F
+    F --> Q[Ollama : Qwen3 1.7B]
+    Q --> G[Garde-fou de cohérence]
+    F --> RAP[Rapport d'investigation]
+    G --> RAP
+    RAP --> PROP[Proposition d'escalade]
+    PROP --> H[Opérateur puis approbateur simulés]
+    P --> T[Traces et métriques JSONL]
+    R --> T
+    G --> T
 ```
 
-### Composants principaux
+La partie **déterministe** collecte et vérifie les faits ; le modèle de langage intervient pour formuler une interprétation **sous contrôle**. Une réponse LLM rejetée n'annule pas l'accès aux preuves. Le catalogue des pipelines ne peut pas être modifié par les outils de l'agent.
 
-| Composant | Fichier | Responsabilité |
+**Composants importants :**
+
+| Élément | Emplacement | Responsabilité |
 |---|---|---|
-| Orchestrateur | `app/agent/orchestrator.py` | Appels LLM, outils, limites et événements |
-| Registre d'outils | `app/agent/tool_registry.py` | Liste blanche et validation Pydantic |
-| Réponses vérifiées | `app/agent/grounded_answer.py` | Restitution des faits et protections |
-| Observabilité | `app/agent/observability.py` | Journalisation JSONL |
-| API REST | `app/api/main.py` | Endpoints HTTP |
-| Dashboard | `app/dashboard/streamlit_app.py` | Interface d'observabilité |
-| Lecture des traces | `app/dashboard/data.py` | Filtrage et statistiques |
-| Tickets simulés | `app/tools/incident_tool.py` | Workflow avec rôles de démonstration |
+| Catalogue métier | `data/company_adf_catalog.json` | Liste immuable de 12 pipelines ADF fictifs |
+| Source des journaux | `app/adf_monitor/source.py` | Consultation bornée, normalisation et filtrage des preuves |
+| Investigation | `app/adf_monitor/enterprise_agent.py` | Plan, outils, réponse Qwen3 et traçabilité |
+| Registre d'outils | `app/agent/tool_registry.py` | Liste blanche, validation des arguments, gestion des erreurs |
+| Garde-fou LLM | `app/adf_monitor/llm_guard.py` | Rejet de certaines affirmations non étayées |
+| Documentation officielle indexée | `docs/microsoft_adf_index.json` | Recherche de recommandations associées aux codes d'erreur |
+| Supervision humaine | `app/adf_monitor/business_escalation.py` | Proposition, soumission et approbation simulées |
+| Interface métier | `app/dashboard/enterprise_app.py` | Tableau de bord, investigation, preuves, validation, gouvernance |
+| Point d'entrée Streamlit | `app/dashboard/streamlit_app.py` | Lancement de l'interface |
+| API historique / générique | `app/api/main.py` | Interface REST du prototype MLOps |
 
----
+## 3. Scénario métier et outils
 
-## <img src="https://api.iconify.design/lucide/wrench.svg?color=%2364748B" width="21" height="21" alt=""> Outils MLOps
+Le contexte **Northstar Retail** contient exactement **12 pipelines** répartis entre quatre domaines : `orders`, `customers`, `payments` et `inventory`. Les définitions et étapes métier sont fixes ; seuls les enregistrements d'exécution synthétiques évoluent dans l'espace de travail externe.
 
-L'agent dispose exactement de **quatre outils autorisés**.
+L'agent dispose de plusieurs outils enregistrés, parmi lesquels :
 
-| Outil | Description | Autorisation |
-|:---|:---|:---|
-| `get_pipeline_status` | Consulter l'état d'un pipeline ETL | Lecture seule |
-| `get_model_metrics` | Consulter les métriques d'un modèle ML | Lecture seule |
-| `search_runbook` | Rechercher une procédure technique | Lecture seule |
-| `prepare_incident_ticket` | Préparer une proposition de ticket | Proposition uniquement |
+| Outil | Entrées principales | Sortie / erreurs possibles | Permission |
+|---|---|---|---|
+| `query_adf_logs` | Pipeline, Run ID, période, limite | Exécutions, activités et codes normalisés ; `NOT_FOUND`, `SOURCE_UNAVAILABLE`, arguments invalides | Lecture seule |
+| `search_official_docs` | Question, code d'erreur, limite | Références Microsoft Learn indexées, ou absence de correspondance | Lecture seule |
+| `get_pipeline_status` | Identifiant de pipeline simulé | Statut ou ressource introuvable | Lecture seule |
+| `get_pipeline_logs` | Pipeline, Run ID | Événements et métriques simulés | Lecture seule |
+| `search_runbook` | Code d'erreur | Procédure existante ou introuvable | Lecture seule |
+| `get_model_metrics` | Identifiant de modèle simulé | Métriques de surveillance | Lecture seule |
+| `prepare_incident_ticket` | Incident, justification | `PROPOSAL_ONLY`, **sans création automatique de ticket** | Proposition uniquement |
 
-### Validation des outils
+Les schémas Pydantic rejettent les outils inconnus, les champs non autorisés et les types invalides. Les appels sont limités en nombre ; les demandes ambiguës ou dangereuses peuvent être refusées. La consultation de Microsoft Learn passe par **un index local de références**, et non par un navigateur web autonome de l'agent.
 
-Les arguments sont vérifiés avec **Pydantic**.
-
-Les schémas contrôlent notamment :
-
-- Les paramètres obligatoires.
-- Les types des paramètres.
-- La longueur des identifiants.
-- Les formats autorisés.
-- L'interdiction des paramètres supplémentaires.
-
-Un appel inconnu est rejeté avec `UNKNOWN_TOOL`.
-
-Des arguments invalides sont rejetés avec `INVALID_ARGUMENTS`.
-
-Une ressource introuvable peut produire `NOT_FOUND`.
-
-### Limites d'exécution
-
-L'orchestrateur applique :
-
-- **3 étapes maximum** de sélection d'outils.
-- **4 appels d'outils maximum** par exécution.
-- Un timeout de **180 secondes** configuré pour Ollama local.
-- La validation de la structure des réponses du modèle.
-- Une gestion contrôlée de plusieurs erreurs d'exécution.
-- Une requête finale au LLM sans outils supplémentaires, si nécessaire.
-
-Ces limites réduisent les risques de boucles et d'exécutions non contrôlées.
-
-### Documentation des contrats
-
-La description détaillée des entrées, sorties, erreurs et permissions est disponible dans :
-
-[docs/tools_contracts.md](docs/tools_contracts.md)
-
-Le scénario d'utilisation est décrit dans :
-
-[docs/scenario.md](docs/scenario.md)
-
----
-
-## <img src="https://api.iconify.design/lucide/rocket.svg?color=%2364748B" width="21" height="21" alt=""> Installation rapide
+## 4. Installation reproductible
 
 ### Prérequis
 
-| Composant | Configuration |
-|---|---|
-| Système | Windows 10/11 ou environnement Python compatible |
-| Python | 3.12 recommandé |
-| Éditeur | VS Code |
-| LLM local | Ollama |
-| Modèle | `qwen3:1.7b` |
-| RAM | 16 Go utilisés pendant les tests locaux |
-| GPU | Facultatif : exécution CPU prise en charge |
+- **Windows + PowerShell** pour les commandes ci-dessous ; adaptation possible sous Linux/macOS.
+- **Python 3.12** recommandé (le projet déclare Python >= 3.11).
+- **Git**, connexion Internet lors de l'installation des dépendances et du téléchargement initial du modèle.
+- **Ollama** installé localement pour les interprétations Qwen3. Un GPU n'est pas requis ; la performance dépend de la machine.
+- Aucun abonnement Azure n'est nécessaire en mode démonstration.
 
-### 1. Cloner le projet
+### Cloner et installer
 
 ```powershell
 git clone https://github.com/HatimN-1/opsguard-ai.git
-
 cd opsguard-ai
-```
 
-Le dépôt étant privé, cette commande nécessite un accès GitHub autorisé.
-
-### 2. Créer un environnement virtuel
-
-```powershell
 py -3.12 -m venv .venv
-
 .\.venv\Scripts\Activate.ps1
-```
 
-### 3. Installer les dépendances
-
-```powershell
 python -m pip install --upgrade pip
-
 python -m pip install -r requirements-dev.txt
-
 python -m pip install -r requirements-dashboard.txt
+python -m pip check
 ```
 
-### 4. Installer et préparer Ollama
+Les fichiers de dépendances font foi pour la version du projet utilisée. Pour documenter un environnement exact, conserver la sortie de `python -m pip freeze` dans le dossier de reproductibilité, **sans y inclure des secrets**.
 
-Installer Ollama depuis son site officiel :
+### Préparer le modèle local
 
-https://ollama.com/
-
-Puis télécharger le modèle :
+Installer Ollama depuis <https://ollama.com/>, puis :
 
 ```powershell
 ollama pull qwen3:1.7b
-
 ollama list
 ```
 
-Le service local Ollama utilise par défaut :
+Par défaut, Ollama est utilisé à `http://127.0.0.1:11434`. Le modèle attendu pour la démonstration est `qwen3:1.7b` ; relever son identifiant exact avec `ollama list` pour reproduire une campagne d'évaluation.
 
-```text
-http://127.0.0.1:11434
-```
-
-La configuration peut être adaptée avec les variables d'environnement `OLLAMA_HOST` et `OLLAMA_MODEL`.
-
-### 5. Vérifier l'environnement
+### Configurer la source ADF simulée
 
 ```powershell
-python --version
-
-python -m pip check
-
-ollama list
+$env:OPSGUARD_ADF_SOURCE = "external_demo"
+# Facultatif : choisir un dossier EXTERNE au dépôt pour les journaux.
+# $env:OPSGUARD_ADF_EXTERNAL_DIR = "C:\chemin\vers\opsguard-adf-external-workspace"
 ```
 
----
-
-## <img src="https://api.iconify.design/lucide/globe.svg?color=%2364748B" width="21" height="21" alt=""> API REST — FastAPI
-
-Depuis la racine du projet :
+Le dossier par défaut est un répertoire **frère** du dépôt : `opsguard-adf-external-workspace`. Ne pas placer les journaux ADF synthétiques dans Git. Les données d'exécution sont générées localement :
 
 ```powershell
-python -m uvicorn app.api.main:app --reload --host 127.0.0.1 --port 8000
+python -m scripts.simulate_company_adf --all --activities 90
 ```
 
-### Adresses locales
+Ce générateur ajoute des exécutions synthétiques au catalogue existant ; il ne crée pas de nouveaux pipelines Azure.
 
-| Service | Adresse |
-|---|---|
-| API | http://127.0.0.1:8000 |
-| Health check | http://127.0.0.1:8000/health |
-| Swagger UI | http://127.0.0.1:8000/docs |
+## 5. Exécution et démonstration
 
-### Endpoints
+### Lancer le tableau de bord
 
-| Méthode | Route | Fonction |
+```powershell
+python -m streamlit run app/dashboard/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
+```
+
+Ouvrir **<http://127.0.0.1:8501>**. Les cinq espaces fonctionnels sont : **Centre de contrôle**, **Agent d'investigation**, **Exécutions & preuves**, **Incidents & validation**, **Sources & gouvernance**.
+
+### Exemple d'investigation traçable
+
+Dans **Agent d'investigation**, sélectionner `adf_04_inventory`, une exécution synthétique en échec portant le code **3200**, puis une période qui couvre ce Run ID. Les identifiants générés varient selon le jeu local ; ne pas réutiliser aveuglément un ancien identifiant.
+
+Question d'exemple :
+
+> Analyse uniquement cette exécution de `adf_04_inventory`. Indique le Run ID exact, le code 3200 et l'activité en échec. Sépare les **faits confirmés dans les journaux** des **hypothèses documentées par Microsoft Learn**. Ne mélange pas plusieurs Runs et n'exécute aucune action corrective.
+
+Résultat attendu : preuve d'une activité en échec, code et Run ID observés, vérifications suggérées à partir de l'index documentaire. **Une explication possible (ex. authentification Databricks) n'est pas une cause racine démontrée.** Le rapport reste consultable si le garde-fou rejette une formulation Qwen3.
+
+### Démonstration de 2 minutes (format demandé dans le cahier des charges)
+
+| Durée indicative | Manipulation | Message à transmettre |
 |---|---|---|
-| `GET` | `/health` | Santé du service |
-| `GET` | `/pipelines/{pipeline_id}` | État d'un pipeline |
-| `GET` | `/models/{model_id}/metrics` | Métriques ML |
-| `GET` | `/runbooks/search` | Recherche d'un runbook |
-| `GET` | `/diagnostics/pipelines/{pipeline_id}` | Diagnostic déterministe |
-| `POST` | `/agent/chat` | Analyse avec Qwen3 |
-| `POST` | `/tickets` | Demande simulée de ticket |
-| `POST` | `/tickets/{ticket_id}/approve` | Approbation simulée |
+| 0:00–0:20 | Centre de contrôle | 12 pipelines figés ; les journaux d'exécution sont synthétiques |
+| 0:20–1:05 | Investigation sur un Run en échec | Plan, sélection des outils, code, activité, preuves et hypothèses |
+| 1:05–1:35 | Incidents & validation | `PROPOSAL_ONLY` → `PENDING_APPROVAL` → `APPROVED`, décision humaine simulée |
+| 1:35–2:00 | Sources & gouvernance / résultats | Traces, garde-fous, tests, limites du modèle |
 
-### Exemple de requête à l'agent
+Préparer à l'avance une exécution synthétique en échec et le dossier d'approbation de démonstration. La synthèse Ollama est locale et sa durée peut varier ; une vidéo enregistrée est plus fiable pour tenir les 2 minutes.
 
-Endpoint :
+## 6. Tests, évaluations et résultats
 
-```text
-POST /agent/chat
-```
-
-Corps JSON :
-
-```json
-{
-  "question": "Analyse le pipeline etl_orders_daily et consulte le runbook correspondant à son erreur."
-}
-```
-
-Pour les requêtes adressées au LLM, Ollama doit être démarré et le modèle doit être disponible.
-
-> [!WARNING]
-> Les endpoints de gestion de tickets utilisent des rôles de démonstration.
-> Ils ne doivent pas être exposés publiquement sans authentification et autorisations réelles.
-
----
-
-## <img src="https://api.iconify.design/lucide/brain-circuit.svg?color=%2364748B" width="21" height="21" alt=""> Utilisation de l'agent
-
-Pour lancer le scénario de démonstration :
-
-```powershell
-python -m app.agent.orchestrator
-```
-
-Ce scénario analyse le pipeline simulé `etl_orders_daily`.
-
-### Structure d'une réponse
-
-Une réponse de l'agent contient notamment :
-
-| Champ | Description |
-|---|---|
-| `status` | Statut de traitement |
-| `answer` | Réponse produite |
-| `model` | Modèle LLM utilisé |
-| `tools_used` | Outils appelés et résultats |
-| `tool_call_count` | Nombre d'appels d'outils |
-| `trace_id` | Identifiant de traçabilité |
-| `latency_ms` | Latence totale |
-
-### Statuts possibles
-
-| Statut | Signification |
-|---|---|
-| `completed` | L'agent a terminé son traitement |
-| `empty_response` | Le modèle n'a pas produit de réponse exploitable |
-| `invalid_response` | La structure de réponse du modèle est invalide |
-| `llm_error` | Erreur de communication Ollama prise en charge |
-| `limit_reached` | Limite d'exécution atteinte |
-
-> [!NOTE]
-> Le statut `completed` ne signifie pas nécessairement que tous les outils attendus ont été appelés ni que la réponse satisfait entièrement la demande.
->
-> La qualité des décisions et la complétude des réponses sont évaluées séparément.
-
----
-
-## <img src="https://api.iconify.design/lucide/chart-no-axes-combined.svg?color=%2364748B" width="21" height="21" alt=""> Observabilité et dashboard
-
-OpsGuard AI comprend un système de traçage événementiel ainsi qu'un dashboard Streamlit en lecture seule.
-
-### 1. Traces JSONL
-
-Les exécutions sont enregistrées localement dans :
-
-```text
-logs/agent_traces.jsonl
-```
-
-Les métadonnées comprennent notamment :
-
-- L'identifiant de trace `trace_id`.
-- L'horodatage UTC.
-- Le modèle utilisé.
-- Le statut de l'exécution.
-- Le mode d'exécution.
-- La latence totale.
-- Les outils appelés.
-- Les résultats et codes d'erreur des outils.
-- La chronologie des événements.
-
-### 2. Chronologie événementielle
-
-Les événements pris en charge sont :
-
-| Événement | Signification |
-|---|---|
-| `AGENT_STARTED` | Début du traitement |
-| `LLM_REQUESTED` | Requête envoyée au modèle |
-| `LLM_RESPONDED` | Réponse reçue et validée |
-| `TOOL_REQUESTED` | Appel d'outil demandé |
-| `TOOL_COMPLETED` | Exécution d'outil terminée |
-| `AGENT_COMPLETED` | Traitement terminé |
-| `AGENT_FAILED` | Échec contrôlé |
-| `LIMIT_REACHED` | Limite d'exécution dépassée |
-
-Chaque événement peut contenir des métadonnées autorisées telles que l'horodatage, le numéro d'étape, le nom d'outil et son résultat.
-
-Les événements sont limités en nombre et soumis à un filtrage des champs.
-
-### 3. Démarrer le dashboard
-
-Dans un terminal PowerShell séparé :
-
-```powershell
-python -m streamlit run app/dashboard/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
-```
-
-Ouvrir :
-
-http://127.0.0.1:8501
-
-### 4. Indicateurs disponibles
-
-Le dashboard présente :
-
-- Le nombre total d'exécutions.
-- Les exécutions terminées.
-- Le nombre d'appels d'outils.
-- La latence moyenne.
-- Le nombre d'appels réussis et échoués.
-- Le taux d'échec des appels d'outils.
-- La répartition des statuts.
-- Les résultats par outil.
-- Les rapports d'évaluation locaux.
-- L'historique des exécutions.
-- La chronologie événementielle détaillée.
-
-### 5. Filtres interactifs
-
-| Filtre | Options |
-|---|---|
-| Origine | Ollama local, client injecté, traces anciennes |
-| Statut | `completed`, `llm_error`, `limit_reached`, etc. |
-| Outil | Pipeline, modèle ML, runbook, ticket |
-
-### 6. Consultation par trace_id
-
-Le dashboard permet de sélectionner une exécution pour examiner sa chronologie.
-
-La section **« Chronologie des événements de l'agent »** affiche :
-
-- L'identifiant de l'exécution.
-- Son origine.
-- Son statut final.
-- Le nombre d'événements.
-- Les horodatages UTC.
-- Les outils appelés.
-- Les résultats et éventuels codes d'erreur.
-
-Les traces anciennes sans événements détaillés restent lisibles.
-
-### Exemple de chronologie observée
-
-Une exécution réelle avec Qwen3 a produit :
-
-```text
-AGENT_STARTED
-LLM_REQUESTED
-LLM_RESPONDED
-TOOL_REQUESTED
-TOOL_COMPLETED
-LLM_REQUESTED
-LLM_RESPONDED
-AGENT_COMPLETED
-```
-
-Cette exécution a appelé `get_pipeline_status` avec succès et enregistré huit événements.
-
-> [!NOTE]
-> Le dashboard est en lecture seule.
-> Il ne crée ni n'approuve de tickets et ne déclenche pas d'opérations MLOps.
-
----
-
-## <img src="https://api.iconify.design/lucide/shield-check.svg?color=%2364748B" width="21" height="21" alt=""> Sécurité et gouvernance
-
-OpsGuard AI applique plusieurs contrôles de sécurité complémentaires.
-
-| Contrôle | Objectif |
-|---|---|
-| Liste blanche des outils | Refuser les outils non autorisés |
-| Validation Pydantic | Rejeter les arguments invalides |
-| Limites d'exécution | Encadrer les appels et les itérations |
-| Gestion des erreurs | Contrôler plusieurs échecs prévisibles |
-| Grounding | Restituer les faits provenant des outils |
-| Détection de contradictions | Écarter certaines affirmations incorrectes |
-| Validation linguistique | Limiter les réponses dans une langue inattendue |
-| Proposition uniquement | Empêcher la création automatique de tickets par le LLM |
-| Traçage réduit | Minimiser les données opérationnelles conservées |
-| Supervision humaine | Réserver les approbations aux acteurs autorisés |
-
-### Gestion contrôlée des tickets
-
-L'outil `prepare_incident_ticket` retourne uniquement une proposition :
-
-```json
-{
-  "status": "PROPOSAL_ONLY",
-  "human_approval_required": true,
-  "ticket_created": false
-}
-```
-
-Ce résultat ne représente pas un ticket créé.
-
-La demande de ticket et son approbation simulées utilisent des endpoints FastAPI séparés.
-
-### Séparation des rôles de démonstration
-
-| Identité de démonstration | Rôle |
-|---|---|
-| `alice` | Opérateur |
-| `charlie` | Opérateur |
-| `bob` | Approbateur |
-| `eve` | Observateur |
-
-Les contrôles de rôle sont effectués côté application.
-
-> [!WARNING]
-> **Limitation de sécurité importante**
->
-> L'en-tête HTTP `X-Demo-User` simule une identité utilisateur.
->
-> Il ne constitue pas une authentification forte.
->
-> Le prototype ne doit pas être exposé à Internet tel quel.
-
-### Gouvernance et analyse des risques
-
-Le document complet est disponible ici :
-
-**[Gouvernance, sécurité et supervision humaine](docs/governance.md)**
-
-Il présente :
-
-- Les principes de gouvernance.
-- La séparation des responsabilités.
-- La matrice des permissions.
-- Le processus d'escalade humaine.
-- Les risques résiduels.
-- La confidentialité des journaux.
-- Les limites des contrôles actuels.
-- Les conditions nécessaires avant une utilisation réelle.
-
-Les mécanismes existants réduisent les risques sans garantir une sécurité exhaustive.
-
----
-
-## <img src="https://api.iconify.design/lucide/flask-conical.svg?color=%2364748B" width="21" height="21" alt=""> Tests et évaluation
-
-OpsGuard AI comprend des tests unitaires, d'intégration, de sécurité et plusieurs évaluations du comportement de l'agent.
-
-### 1. Vérification de la qualité du code
-
-Depuis la racine du projet :
+### Contrôles locaux
 
 ```powershell
 python -m ruff check .
-
-python -m compileall -q app scripts
-
 python -m pytest -q
-
 python -m pip check
+python -m scripts.evaluate_enterprise_compliance --check
 ```
 
-### 2. Évaluation des appels d'outils
+### Évaluation reproductible des outils (sans LLM)
 
 ```powershell
-python -m scripts.evaluate_agent --repeats 2
+python -m scripts.evaluate_enterprise_llm --check
 ```
 
-Cette évaluation vérifie notamment :
-
-- La sélection des outils.
-- Le nombre d'appels.
-- Les arguments attendus.
-- Les outils manquants.
-- Les outils inattendus.
-- Les appels en échec.
-
-Le modèle réel est utilisé pour cette évaluation.
-
-### 3. Évaluation de la qualité des réponses
+### Évaluation locale avec Qwen3
 
 ```powershell
-python -m scripts.evaluate_responses
+python -m scripts.evaluate_enterprise_llm --live --repetitions 2 --seed 42
 ```
 
-Cette évaluation analyse :
+Cette dernière commande fait **12 scénarios × 2 répétitions = 24 investigations** ; elle requiert qu'Ollama et `qwen3:1.7b` soient disponibles. Les résultats sont exportés sous `outputs/` (répertoire local exclu de Git).
 
-- La langue détectée.
-- La couverture des faits attendus.
-- Les éléments manquants.
-- Le résultat global des scénarios.
+**Résultats de la campagne du 12 novembre 2026**, sur l'environnement de développement du projet :
 
-Les contrôles linguistiques sont heuristiques.
+| Mesure | Résultat observé | Interprétation |
+|---|---:|---|
+| Tests pytest | **356 réussis**, 2 ignorés | Contrôles automatisés ; une alerte de dépréciation non bloquante |
+| Conformité Projet 3 hors ligne | **6/6 PASS** | Statut nominal, diagnostic, 3 outils, refus, approbation humaine |
+| Vérifications retrieval / sélection / codes / documentation | **100 %** sur le protocole | Mesures déterministes sur les 12 scénarios |
+| Refus des demandes non autorisées | **100 %** sur le protocole | Ne prouve pas une sécurité générale de production |
+| Réponses Qwen3 acceptées par le garde-fou | **21/24 — 87,5 %** | Avant correction : 15/24 — 62,5 % |
+| Réponses Qwen3 rejetées | **3/24** | 2 allégations d'échec non étayées ; 1 allégation de récurrence non étayée |
+| Modèle disponible | **24/24** | Disponibilité pendant cette campagne uniquement |
+| Latence moyenne par investigation LLM | **10,02 s** | Dépend du matériel, du modèle et de la charge locale |
+| Fidélité sémantique globale | **Non chiffrée** | Relecture humaine nécessaire : `MANUAL_REVIEW_REQUIRED` |
 
-### 4. Évaluation déterministe des escalades humaines
+La réussite du garde-fou **n'équivaut pas** à la vérité de chaque phrase. Une revue humaine ciblée a confirmé une réponse prudente sur le code 3200, mais les erreurs résiduelles doivent être présentées dans le rapport. Les pourcentages sont ceux de ce **banc d'essai synthétique**, non des performances sur des incidents Azure réels.
+
+Les critères de conformité sont documentés par les scripts et tests ; le workflow de CI se trouve dans `.github/workflows/enterprise-adf-quality.yml`. Son succès sur GitHub doit être vérifié après publication : les résultats locaux ne prouvent pas, à eux seuls, que la CI distante a déjà réussi.
+
+## 7. Observabilité, sécurité et validation humaine
+
+### Traces opérationnelles
+
+L'agent journalise des événements observables tels que `AGENT_STARTED`, `TOOL_REQUESTED`, `TOOL_COMPLETED`, `LLM_REQUESTED`, `LLM_RESPONDED` et `AGENT_COMPLETED`. Les nouvelles traces instrumentées enregistrent notamment le **motif/canal de sélection** d'un outil, son **statut** et sa **durée**, ainsi que des informations de latence et d'escalade. Les données non nécessaires au diagnostic sont filtrées ; le raisonnement interne privé du modèle n'est pas enregistré.
+
+Les anciennes traces peuvent avoir un schéma moins riche. Elles sont **conservées sans reconstruction artificielle**. Pour vérifier une nouvelle trace, utiliser les scripts de contrôle :
 
 ```powershell
-python -m scripts.evaluate_escalation
+python .\scripts\verify_fresh_trace_readonly.py --mark
+python -m scripts.smoke_generic_orchestrator_trace
+python .\scripts\verify_fresh_trace_readonly.py --check
+python .\scripts\audit_fresh_trace_quality_readonly.py
 ```
 
-Cette évaluation exécute sept scénarios avec des clients simulés.
+### Contrôle d'accès et escalade
 
-Elle vérifie :
+- Les outils de lecture n'ont pas le droit de modifier l'infrastructure.
+- L'agent peut proposer une escalade (`PROPOSAL_ONLY`, `human_approval_required: true`, `ticket_created: false`) mais **ne peut ni la soumettre ni l'approuver lui-même**.
+- Un **opérateur simulé** soumet explicitement la demande (`PENDING_APPROVAL`) ; un **approbateur simulé distinct** peut produire la décision (`APPROVED`).
+- Ces transitions sont des événements **locaux simulés**, pas un ticket de production ni un droit d'exécution Azure.
+- Les validations côté application et les tests de rôles limitent les actions ; **ce n'est pas un système d'identité et d'accès de production**.
 
-- La préparation d'une proposition de ticket.
-- Le refus des demandes de création non autorisées.
-- Le refus des demandes d'approbation non autorisées.
-- Les erreurs de validation des arguments.
-- Les ressources inexistantes.
-- Les exigences d'approbation humaine des runbooks.
+Les questions demandant un redémarrage, une suppression, une modification d'ADF ou une approbation automatique sont hors périmètre.
 
-Cette évaluation ne mesure pas directement le raisonnement de Qwen3.
+### Confidentialité
 
-### 5. Évaluation réelle des escalades avec Qwen3
+Ne jamais publier de fichiers `.env` contenant des valeurs réelles, de jetons, de secrets, de journaux bruts ou d'informations personnelles. Utiliser `.env.example` uniquement comme exemple public. Les dossiers `logs/`, `outputs/`, les fichiers de travail et l'espace de données ADF externe restent locaux. Les rapports d'évaluation commis à Git ne doivent contenir aucune requête privée ni identifiant sensible.
 
-```powershell
-python -m scripts.evaluate_escalation_live
-```
+## 8. Données, versions et reproductibilité
 
-Cette évaluation utilise le modèle local `qwen3:1.7b`.
-
-Trois scénarios sont étudiés :
-
-| Scénario | Objectif |
+| Élément | Référence versionnée / procédure |
 |---|---|
-| `LIVE-ESC-001` | Préparer une proposition de ticket |
-| `LIVE-ESC-002` | Refuser une approbation interdite |
-| `LIVE-ESC-003` | Diagnostiquer un pipeline et consulter son runbook |
+| Code | Commit Git (`git rev-parse HEAD`) |
+| Catalogue des 12 pipelines | `data/company_adf_catalog.json`, empreinte du fichier calculable par SHA-256 |
+| Configurations | `config/enterprise_adf.json`, `.streamlit/config.toml` |
+| Scénarios d'évaluation | `evaluation/enterprise_llm_cases.json` |
+| Documentation de référence | `docs/microsoft_adf_index.json` |
+| Modèle | `qwen3:1.7b` ; relever l'ID avec `ollama list` |
+| Dépendances | `requirements*.txt`, environnement Python et `python -m pip freeze` |
+| Journaux de simulation | Générés hors dépôt avec `scripts.simulate_company_adf` |
+| Rapports expérimentaux | `outputs/` local ; conserver une copie anonymisée dans le dossier de remise |
 
-Deux mesures sont distinguées :
+Une répétition de campagne avec le même `--seed 42` stabilise la configuration du protocole, **mais ne garantit pas des textes LLM identiques** : les sorties du modèle et la latence peuvent varier. Le dossier de reproductibilité de remise doit préciser le matériel, la version Ollama, le commit Git, les versions des dépendances et les paramètres de la campagne.
 
-**Sélection exacte des outils**
+## 9. Limites et pistes d'amélioration
 
-Vérifie si les appels exécutés correspondent aux outils attendus.
+1. **Simulation :** le fonctionnement a été évalué sur un catalogue fictif et des journaux ADF synthétiques, pas sur des environnements Azure de production.
+2. **Fidélité LLM :** Qwen3 peut produire des formulations non étayées (échec supposé sur une exécution réussie, récurrence non prouvée). Le garde-fou en détecte certaines, mais pas toutes ; une revue humaine reste nécessaire.
+3. **Échantillon limité :** 12 scénarios et 24 essais ne permettent pas de généraliser à tous les types d'incidents.
+4. **Sécurité :** les utilisateurs et rôles de démonstration ne fournissent ni SSO, ni IAM, ni contrôle de production.
+5. **Traçabilité historique :** certaines anciennes traces ne possèdent pas toutes les métadonnées récentes ; elles n'ont pas été modifiées a posteriori.
+6. **Améliorations futures :** corpus documentaire versionné plus large, tests adversariaux supplémentaires, annotation humaine systématique des réponses, mécanismes d'authentification réels et intégration Azure en lecture seule sous contrôle strict.
 
-**Respect de la frontière d'autorisation**
-
-Vérifie qu'aucun outil interdit n'a été exécuté avec succès.
-
-La qualité des réponses doit également être examinée séparément.
-
-### 6. Résultats expérimentaux
-
-Derniers résultats locaux validés le **10 novembre 2026** :
-
-| Vérification | Résultat |
-|---|---|
-| Tests automatisés pytest | **117/117 réussis** |
-| Analyse Ruff | **Aucune erreur** |
-| Compatibilité des dépendances | **Aucune incompatibilité** |
-| Évaluation déterministe des escalades | **7/7 réussies** |
-| Sélection d'outils avec Qwen3 | **3/3 réussies** |
-| Frontière d'autorisation avec Qwen3 | **3/3 respectée** |
-
-Les scénarios réels ont notamment confirmé :
-
-- La préparation d'une proposition sans création de ticket.
-- Le refus d'approbation en français.
-- La consultation du runbook `RB-001`.
-- L'affichage explicite d'une exigence de validation humaine.
-
-> [!CAUTION]
-> **Interprétation des scores**
->
-> Ces résultats portent sur un nombre limité de scénarios.
->
-> Un score de 100 % sur ce jeu d'essai ne garantit ni une fiabilité générale du modèle ni une sécurité de production.
->
-> Certaines réponses finales utilisent des faits vérifiés et des messages déterministes plutôt que le texte libre du LLM.
-
-### 7. Rapports générés
-
-Les rapports locaux sont enregistrés dans :
+## 10. Organisation du dépôt
 
 ```text
-outputs/
-├── agent_evaluation_repeated.json
-├── response_quality.json
-├── escalation_evaluation.json
-└── escalation_live_evaluation.json
+opsguard-ai/
+├── app/
+│   ├── adf_monitor/         # Catalogue, preuves, investigation, garde-fou, escalade
+│   ├── agent/               # Orchestration générique et registre d'outils
+│   ├── api/                 # API FastAPI
+│   ├── dashboard/           # Interface Streamlit et CSS
+│   └── simulation/          # Simulation des événements
+├── config/                  # Configuration métier
+├── data/                    # Catalogue versionné des 12 pipelines
+├── docs/                    # Documentation technique et index Microsoft Learn
+├── evaluation/              # Scénarios et labels d'évaluation
+├── scripts/                 # Simulation, audits, évaluations et conformité
+├── tests/                   # Tests unitaires, intégration et sécurité
+├── .github/workflows/       # Quality gates CI
+├── .streamlit/              # Thème Streamlit
+├── requirements*.txt        # Dépendances
+└── README.md
 ```
 
-Ces rapports sont exclus du dépôt Git.
-
-### 8. Intégration continue
-
-Le workflow GitHub Actions est défini dans :
-
-`.github/workflows/ci.yml`
-
-Il exécute automatiquement :
-
-1. L'installation des dépendances.
-2. `python -m pip check`.
-3. `python -m ruff check .`.
-4. `python -m compileall -q app scripts`.
-5. `python -m pytest -q`.
-
-La dernière validation locale mentionnée ci-dessus comporte 117 tests réussis.
-
-Le statut de la dernière exécution GitHub Actions doit être vérifié séparément dans l'onglet **Actions** du dépôt.
+**Référence académique :** *Cahier des charges — Mini-projets MLOps et LLMOps*, sections 2.2, 5 et 8–10 (Projet 3, socle de qualité, monitoring et livrables). La démonstration attendue est d'environ **2 minutes** ; le rapport technique demandé est de **8 à 12 pages**.
 
 ---
 
-## <img src="https://api.iconify.design/lucide/lock-keyhole.svg?color=%2364748B" width="21" height="21" alt=""> Confidentialité
-
-OpsGuard AI applique un principe de minimisation des données conservées dans les journaux.
-
-Les traces sont stockées dans :
-
-```text
-logs/agent_traces.jsonl
-```
-
-### Données conservées
-
-Les journaux peuvent contenir :
-
-- Des identifiants de trace.
-- Des horodatages.
-- Des statuts d'exécution.
-- Des latences.
-- Des noms d'outils.
-- Des indicateurs de réussite ou d'échec.
-- Des codes d'erreur.
-- Des événements opérationnels.
-
-### Données exclues du format de traçage
-
-Les champs contenant directement les éléments suivants ne sont pas enregistrés :
-
-- Les questions utilisateur.
-- Les réponses complètes du LLM.
-- Les arguments des appels d'outils.
-- Les résultats détaillés des outils.
-
-Les événements détaillés sont filtrés selon une liste de champs autorisés.
-
-> [!IMPORTANT]
-> La minimisation des données ne remplace pas un audit complet de confidentialité.
->
-> Les métadonnées globales des appels d'outils nécessiteraient des contrôles supplémentaires avant une utilisation avec des données sensibles.
-
-Les répertoires `logs/` et `outputs/` sont exclus du suivi Git.
-
-Il ne faut jamais y publier volontairement des secrets ou des données personnelles.
-
----
-
-## <img src="https://api.iconify.design/lucide/triangle-alert.svg?color=%2364748B" width="21" height="21" alt=""> Limites connues
-
-OpsGuard AI reste un prototype académique.
-
-Les principales limites sont :
-
-- Données MLOps entièrement simulées.
-- Absence de connexion à une infrastructure de production.
-- Absence d'authentification réelle sur les routes de démonstration.
-- Stockage temporaire des tickets en mémoire.
-- Possibilité d'omission d'outils attendus par le LLM.
-- Vérification linguistique heuristique.
-- Contrôles de contradictions non exhaustifs.
-- Défense limitée contre les injections de prompt avancées.
-- Performances variables du modèle en exécution CPU.
-- Nombre restreint de scénarios d'évaluation.
-- Journalisation locale sans politique automatisée de conservation.
-- Absence de connexion MLflow dans la version actuelle.
-- Absence de mécanisme de déploiement en production.
-
-### Améliorations possibles
-
-- Intégration de véritables sources MLOps.
-- Authentification et gestion des autorisations réelles.
-- Extension des tests adversariaux.
-- Enrichissement des jeux d'évaluation.
-- Ajout de métriques de complétude des demandes.
-- Persistance sécurisée des tickets.
-- Politique de conservation et de rotation des journaux.
-- Intégration MLflow pour le suivi des expérimentations.
-- Conteneurisation avec Docker.
-- Monitoring opérationnel renforcé.
-
-Ces améliorations ne sont pas présentées comme déjà implémentées.
-
----
-
-## <img src="https://api.iconify.design/lucide/presentation.svg?color=%2364748B" width="21" height="21" alt=""> Scénario de démonstration
-
-Le projet peut être présenté au moyen du déroulement suivant :
-
-### Étape 1 — Préparer l'environnement
-
-Vérifier la disponibilité du modèle :
-
-```powershell
-ollama list
-```
-
-### Étape 2 — Démarrer FastAPI
-
-```powershell
-python -m uvicorn app.api.main:app --reload
-```
-
-### Étape 3 — Ouvrir Swagger
-
-Accéder à :
-
-http://127.0.0.1:8000/docs
-
-### Étape 4 — Diagnostiquer un pipeline
-
-Consulter le pipeline :
-
-`etl_orders_daily`
-
-Observer son statut et son code d'erreur.
-
-### Étape 5 — Rechercher un runbook
-
-Rechercher :
-
-`SCHEMA_VALIDATION_ERROR`
-
-Présenter la procédure `RB-001` et son exigence de validation humaine.
-
-### Étape 6 — Consulter les métriques ML
-
-Analyser :
-
-`fraud_detection_v1`
-
-### Étape 7 — Présenter l'escalade humaine
-
-Montrer que `prepare_incident_ticket` prépare une proposition sans créer de ticket.
-
-### Étape 8 — Exécuter l'agent
-
-```powershell
-python -m app.agent.orchestrator
-```
-
-Présenter les outils réellement appelés et le `trace_id` obtenu.
-
-### Étape 9 — Ouvrir le dashboard
-
-```powershell
-python -m streamlit run app/dashboard/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
-```
-
-Examiner les indicateurs, les appels d'outils et la chronologie événementielle.
-
-### Étape 10 — Présenter les évaluations
-
-```powershell
-python -m scripts.evaluate_escalation
-
-python -m scripts.evaluate_escalation_live
-```
-
-Expliquer les différences entre contrôles déterministes, sélection des outils et qualité des réponses.
-
-### Étape 11 — Présenter la gouvernance
-
-Consulter :
-
-`docs/governance.md`
-
-Expliquer les permissions, les risques résiduels et le rôle de la validation humaine.
-
-### Étape 12 — Présenter la qualité du projet
-
-```powershell
-python -m ruff check .
-
-python -m pytest -q
-```
-
-Montrer également la configuration GitHub Actions.
-
----
-
-## <img src="https://api.iconify.design/lucide/book-open.svg?color=%2364748B" width="21" height="21" alt=""> Documentation
-
-| Document | Contenu |
-|---|---|
-| [Scénario de l'agent](docs/scenario.md) | Objectifs, cas d'usage et limites |
-| [Contrats des outils](docs/tools_contracts.md) | Entrées, sorties, erreurs et permissions |
-| [Gouvernance et sécurité](docs/governance.md) | Supervision humaine, risques et restrictions |
-| [README](README.md) | Installation, architecture et démonstration |
-
----
-
-## <img src="https://api.iconify.design/lucide/flag.svg?color=%2364748B" width="21" height="21" alt=""> Statut du projet
-
-**Prototype MLOps local fonctionnel — phase de validation académique.**
-
-Les composants suivants sont implémentés :
-
-- Orchestrateur LLM avec Qwen3.
-- Quatre outils MLOps contrôlés.
-- API REST FastAPI.
-- Workflow de tickets simulés.
-- Validation et gestion d'erreurs.
-- Réponses fondées sur des faits vérifiés.
-- Observabilité événementielle.
-- Dashboard Streamlit.
-- Tests automatisés.
-- Évaluations déterministes et réelles.
-- Workflow GitHub Actions.
-- Documentation de gouvernance.
-
-Le système reste destiné à un usage pédagogique, à l'expérimentation et à la démonstration.
-
----
-
-<div align="center">
-
-### 🛡️ OpsGuard AI
-
-**Intelligent MLOps Incident Management & Observability Agent**
-
-*Intelligent diagnostics. Controlled actions. Observable execution.*
-
-**Python · FastAPI · Ollama · Qwen3 · Streamlit · pytest · GitHub Actions**
-
----
-
-**Academic MLOps & Agentic AI Prototype — 2026**
-
-</div>
+**OpsGuard AI est un outil d'assistance et d'observabilité académique : les preuves structurées priment toujours sur une interprétation du modèle, et toute décision sensible reste humaine.**

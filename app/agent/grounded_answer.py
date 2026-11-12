@@ -1,5 +1,4 @@
-
-"""Build safe French answers grounded in successful tool results."""
+"""Build safe, helpful answers from successful simulated MLOps tool results."""
 
 import math
 import re
@@ -7,29 +6,50 @@ import re
 from app.agent.response_guard import detect_contradictions
 from app.agent.response_quality import detect_language
 
-# ---------------------------------------------------------------------
-# Validate safe technical identifiers
-# ---------------------------------------------------------------------
+# Display translations of the known, versioned simulated runbook steps.
+# Unknown future steps remain source text instead of being invented.
+KNOWN_RUNBOOK_TRANSLATIONS = {
+    "Inspect the latest pipeline execution logs.":
+        "Examiner les journaux de la dernière exécution du pipeline.",
+    "Compare source and expected schemas.":
+        "Comparer le schéma source au schéma attendu.",
+    "Identify missing fields or incompatible data types.":
+        "Identifier les champs manquants ou les types de données incompatibles.",
+    "Validate the transformation configuration.":
+        "Vérifier la configuration des transformations.",
+    "Test the corrected schema on a sample dataset.":
+        "Tester le schéma corrigé sur un échantillon de données.",
+    "Inspect average latency and P95 latency.":
+        "Examiner les latences moyenne et P95.",
+    "Review CPU and memory utilization.":
+        "Contrôler l'utilisation du processeur et de la mémoire.",
+    "Check the number of concurrent requests.":
+        "Vérifier le nombre de requêtes simultanées.",
+    "Investigate slow preprocessing operations.":
+        "Examiner les opérations de prétraitement lentes.",
+    "Compare latency against the reference baseline.":
+        "Comparer la latence aux valeurs de référence.",
+    "Calculate the missing-value rate for each feature.":
+        "Calculer le taux de valeurs manquantes par variable.",
+    "Compare the rates with the reference dataset.":
+        "Comparer les taux avec le jeu de données de référence.",
+    "Identify recent changes in upstream data sources.":
+        "Identifier les modifications récentes des sources de données amont.",
+    "Review the preprocessing and imputation rules.":
+        "Vérifier les règles de prétraitement et d'imputation.",
+    "Escalate if the missing values affect critical features.":
+        "Escalader si les valeurs manquantes affectent des variables critiques.",
+}
+
 
 def _identifier(value: object) -> str | None:
-    """Keep only short, safe technical identifiers."""
-
-    if (
-        isinstance(value, str)
-        and re.fullmatch(r"[A-Za-z0-9_-]{1,80}", value)
-    ):
+    """Only show short technical identifiers in deterministic facts."""
+    if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,80}", value):
         return value
-
     return None
 
 
-# ---------------------------------------------------------------------
-# Format valid percentages
-# ---------------------------------------------------------------------
-
 def _percentage(value: object) -> str | None:
-    """Format valid percentages."""
-
     if (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
@@ -37,196 +57,119 @@ def _percentage(value: object) -> str | None:
         and 0 <= value <= 100
     ):
         return f"{value:g} %"
-
     return None
 
 
-# ---------------------------------------------------------------------
-# Compose a grounded and secure agent answer
-# ---------------------------------------------------------------------
+def _number(value: object) -> str | None:
+    if type(value) is int and value >= 0:
+        return f"{value:,}".replace(",", " ")
+    return None
+
+
+def _latency(value: object) -> str | None:
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+    ):
+        return f"{value:g} ms"
+    return None
+
+
+def _safe_runbook_step(value: object) -> str | None:
+    """Display limited text from simulated runbooks, never execute it."""
+    if not isinstance(value, str):
+        return None
+    step = " ".join(value.split())
+    return KNOWN_RUNBOOK_TRANSLATIONS.get(step, step[:220]) if step else None
+
 
 def compose_grounded_answer(
     question: str,
     generated_answer: str,
     tool_results: list[dict],
 ) -> str:
-    """Return grounded facts and suppress unsafe model claims."""
+    """Ground answers and refuse unsupported ticket action claims.
 
-    # -------------------------------------------------------------
-    # Detect contradictions between the generated answer
-    # and verified tool results.
-    # -------------------------------------------------------------
-
-    issues = detect_contradictions(
-        generated_answer,
-        tool_results,
-    )
-
-    # -------------------------------------------------------------
-    # Detect the user's language.
-    # -------------------------------------------------------------
-
-    french_question = (
-        detect_language(question) == "fr"
-    )
-
-    # -------------------------------------------------------------
-    # Non-French requests
-    #
-    # Preserve the existing behavior for non-French requests,
-    # except unsupported ticket actions.
-    # -------------------------------------------------------------
-
+    The verified section is assembled from the Python tool outputs, not the LLM.
+    Free-form text is only displayed when it passes limited quality checks.
+    """
+    issues = detect_contradictions(generated_answer, tool_results)
+    # Default unknown short requests to French rather than discarding evidence.
+    french_question = detect_language(question) != "en"
     if not french_question:
-
         if "UNVERIFIED_TICKET_ACTION" in issues:
             return (
-                "No ticket was created or approved by this "
-                "agent. Human authorization is required."
+                "No ticket was created or approved by this agent. "
+                "Human authorization is required."
             )
-
         return generated_answer
 
-    # -------------------------------------------------------------
-    # Store verified facts derived from successful tools only.
-    # -------------------------------------------------------------
-
     facts: list[str] = []
-
+    procedures: list[str] = []
     proposal_only = False
 
-    # -------------------------------------------------------------
-    # Process verified tool results
-    # -------------------------------------------------------------
-
     for result in tool_results:
-
-        # Ignore failed tools.
-        if result.get("ok") is not True:
+        if not isinstance(result, dict) or result.get("ok") is not True:
             continue
-
         name = result.get("tool")
         data = result.get("data")
 
-        # =========================================================
-        # Tool 1: get_pipeline_status
-        # =========================================================
-
-        if (
-            name == "get_pipeline_status"
-            and isinstance(data, dict)
-        ):
-
-            pipeline_id = _identifier(
-                data.get("pipeline_id")
-            )
-
+        if name == "get_pipeline_status" and isinstance(data, dict):
+            pipeline_id = _identifier(data.get("pipeline_id"))
             status = data.get("status")
-
-            status_fr = {
-                "FAILED": "en échec",
-                "SUCCESS": "réussi",
-                "RUNNING": "en cours",
-            }
-
-            if pipeline_id and status in status_fr:
+            statuses = {"FAILED": "en échec", "SUCCESS": "réussi", "RUNNING": "en cours"}
+            if pipeline_id and status in statuses:
                 facts.append(
-                    f"Le pipeline {pipeline_id} est "
-                    f"{status_fr[status]} "
-                    f"(statut {status})."
+                    f"Le pipeline {pipeline_id} est {statuses[status]} (statut {status})."
                 )
-
-            error_code = _identifier(
-                data.get("error_code")
-            )
-
+            error_code = _identifier(data.get("error_code"))
             if error_code:
-                facts.append(
-                    f"Code d'erreur : {error_code}."
-                )
+                facts.append(f"Code d'erreur : {error_code}.")
+            records = _number(data.get("records_processed"))
+            invalid = _number(data.get("invalid_records"))
+            if records is not None and invalid is not None:
+                facts.append(f"Enregistrements traités : {records} ; invalides : {invalid}.")
 
-        # =========================================================
-        # Tool 2: get_model_metrics
-        # =========================================================
-
-        elif (
-            name == "get_model_metrics"
-            and isinstance(data, dict)
-        ):
-
-            model_id = _identifier(
-                data.get("model_id")
-            )
-
+        elif name == "get_model_metrics" and isinstance(data, dict):
+            model_id = _identifier(data.get("model_id"))
             if model_id:
-                facts.append(
-                    f"Le modèle analysé est {model_id}."
-                )
+                facts.append(f"Modèle consulté : {model_id}.")
+            requests = _number(data.get("requests_total"))
+            if requests is not None:
+                facts.append(f"Nombre de requêtes : {requests}.")
+            error_rate = _percentage(data.get("error_rate_pct"))
+            invalid_rate = _percentage(data.get("invalid_input_rate_pct"))
+            if error_rate is not None:
+                facts.append(f"Taux d'erreur : {error_rate}.")
+            if invalid_rate is not None:
+                facts.append(f"Taux d'entrées invalides : {invalid_rate}.")
+            avg_latency = _latency(data.get("latency_avg_ms"))
+            p95_latency = _latency(data.get("latency_p95_ms"))
+            if avg_latency is not None:
+                facts.append(f"Latence moyenne : {avg_latency}.")
+            if p95_latency is not None:
+                facts.append(f"Latence P95 : {p95_latency}.")
 
-            error_rate = _percentage(
-                data.get("error_rate_pct")
-            )
-
-            invalid_rate = _percentage(
-                data.get("invalid_input_rate_pct")
-            )
-
-            if error_rate:
-                facts.append(
-                    f"Taux d'erreur : {error_rate}."
-                )
-
-            if invalid_rate:
-                facts.append(
-                    "Taux d'entrées invalides : "
-                    f"{invalid_rate}."
-                )
-
-        # =========================================================
-        # Tool 3: search_runbook
-        # =========================================================
-
-        elif (
-            name == "search_runbook"
-            and isinstance(data, list)
-        ):
-
-            # Limit the number of displayed runbooks.
+        elif name == "search_runbook" and isinstance(data, list):
             for runbook in data[:3]:
-
                 if not isinstance(runbook, dict):
                     continue
-
-                runbook_id = _identifier(
-                    runbook.get("runbook_id")
-                )
-
+                runbook_id = _identifier(runbook.get("runbook_id"))
                 if runbook_id:
+                    facts.append(f"Procédure consultée : {runbook_id}.")
+                if runbook.get("human_approval_required") is True:
                     facts.append(
-                        f"Procédure consultée : {runbook_id}."
+                        "La procédure consultée indique qu'une validation humaine est requise."
                     )
-
-                # ---------------------------------------------
-                # Human escalation safeguard
-                #
-                # An explicit approval requirement from
-                # verified runbook data must be mentioned
-                # even when the model omits it.
-                # ---------------------------------------------
-
-                if (
-                    runbook.get("human_approval_required")
-                    is True
-                ):
-                    facts.append(
-                        "La procédure consultée indique "
-                        "qu'une validation humaine "
-                        "est requise."
-                    )
-
-        # =========================================================
-        # Tool 4: prepare_incident_ticket
-        # =========================================================
+                steps = runbook.get("diagnostic_steps")
+                if runbook_id and isinstance(steps, list):
+                    procedures.append(f"Étapes documentées dans {runbook_id} :")
+                    for number, raw_step in enumerate(steps[:5], start=1):
+                        step = _safe_runbook_step(raw_step)
+                        if step:
+                            procedures.append(f"{number}. {step}")
 
         elif (
             name == "prepare_incident_ticket"
@@ -235,165 +178,64 @@ def compose_grounded_answer(
             and data.get("ticket_created") is False
             and data.get("human_approval_required") is True
         ):
-
             proposal_only = True
-
-            incident_id = _identifier(
-                data.get("incident_id")
-            )
-
+            incident_id = _identifier(data.get("incident_id"))
             if incident_id:
                 facts.append(
-                    f"Pour l'incident {incident_id}, "
-                    "seule une proposition de ticket "
-                    "a été préparée."
+                    f"Pour l'incident {incident_id}, seule une proposition "
+                    "de ticket a été préparée."
                 )
-
             facts.append(
-                "Aucun ticket n'a été créé ni approuvé "
-                "par cet agent. Une validation humaine "
-                "est nécessaire."
+                "Aucun ticket n'a été créé ni approuvé par cet agent. "
+                "Une validation humaine est nécessaire."
             )
 
-    # -------------------------------------------------------------
-    # Build the verified facts section.
-    # -------------------------------------------------------------
-
-    verified_section = ""
-
-    if facts:
-        verified_section = (
-            "Faits vérifiés (données simulées) :\n"
-            + "\n".join(
-                f"- {fact}"
-                for fact in facts
-            )
-        )
-
-    # =============================================================
-    # SECURITY RULE 1
-    #
-    # Never allow free-form LLM text to claim that a proposed
-    # incident ticket has been created or approved.
-    # =============================================================
+    verified_section = (
+        "Faits vérifiés (données simulées) :\n" + "\n".join(f"- {fact}" for fact in facts)
+        if facts
+        else ""
+    )
+    if procedures:
+        verified_section += "\n\n" + "\n".join(procedures)
 
     if proposal_only:
         return (
             verified_section
-            + "\n\nLa réponse libre du modèle n'est pas "
-            "reprise pour cette proposition de ticket. "
-            "Toute approbation nécessite une intervention "
-            "humaine distincte."
+            + "\n\nLa réponse libre du modèle n'est pas reprise pour cette "
+            "proposition de ticket. Toute approbation nécessite une "
+            "intervention humaine distincte."
         )
-
-    # =============================================================
-    # SECURITY RULE 2
-    #
-    # Reject unsupported ticket creation or approval claims.
-    # This protection also applies when no tool succeeded.
-    # =============================================================
 
     if "UNVERIFIED_TICKET_ACTION" in issues:
-
-        safe_message = (
-            "Aucune création ni approbation de ticket "
-            "n'a été exécutée par cet agent. "
-            "Une validation humaine est requise."
+        note = (
+            "Aucune création ni approbation de ticket n'a été exécutée "
+            "par cet agent. Une validation humaine est requise."
         )
-
-        if verified_section:
-            return (
-                verified_section
-                + "\n\n"
-                + safe_message
-            )
-
-        return safe_message
-
-    # =============================================================
-    # SECURITY RULE 3
-    #
-    # Hide generated analysis when contradictions are detected.
-    # =============================================================
+        return (verified_section + "\n\n" + note) if verified_section else note
 
     if issues:
-
-        warning = (
-            "L'analyse générée a été masquée car "
-            "une contradiction potentielle a été détectée."
+        note = (
+            "L'analyse générée a été masquée car une contradiction "
+            "potentielle a été détectée."
         )
-
-        if verified_section:
-            return (
-                verified_section
-                + "\n\n"
-                + warning
-            )
-
-        return warning
-
-    # =============================================================
-    # SECURITY RULE 4
-    #
-    # No verified facts available.
-    #
-    # Do not return an English answer to a French question.
-    # Use a deterministic French response for ticket requests.
-    # =============================================================
+        return (verified_section + "\n\n" + note) if verified_section else note
 
     if not facts:
-
-        # Preserve valid French responses.
         if detect_language(generated_answer) == "fr":
             return generated_answer
-
-        # Ticket-related questions get a safe French fallback.
-        if re.search(
-            r"ticket|approuv|approb",
-            question,
-            flags=re.IGNORECASE,
-        ):
+        if re.search(r"ticket|approuv|approb", question, flags=re.IGNORECASE):
             return (
-                "Cet agent ne peut ni créer ni approuver "
-                "de ticket. Aucune action de ce type "
-                "n'a été exécutée par cet agent. "
+                "Cet agent ne peut ni créer ni approuver de ticket. "
+                "Aucune action de ce type n'a été exécutée par cet agent. "
                 "Une validation humaine est nécessaire."
             )
-
-        # General fallback when language is not confirmed.
         return (
-            "La réponse générée n'a pas été reprise : "
-            "son respect du français n'a pas été confirmé."
+            "Je n'ai pas de faits vérifiés à présenter pour cette demande. "
+            "Tu peux préciser un pipeline, un modèle ou un incident."
         )
-
-    # =============================================================
-    # SECURITY RULE 5
-    #
-    # Add free-form generated analysis only when:
-    # - Verified facts are available.
-    # - No contradiction was detected.
-    # - The answer is confidently detected as French.
-    # =============================================================
 
     if detect_language(generated_answer) == "fr":
+        return verified_section + "\n\nAnalyse du modèle (à vérifier) :\n" + generated_answer
 
-        return (
-            verified_section
-            + "\n\nAnalyse générée par le modèle "
-            "(à vérifier) :\n"
-            + generated_answer
-        )
-
-    # =============================================================
-    # SECURITY RULE 6
-    #
-    # If language detection fails, preserve verified facts
-    # and reject the generated analysis.
-    # =============================================================
-
-    return (
-        verified_section
-        + "\n\nLa synthèse générée n'a pas été "
-        "reprise : son respect du français "
-        "n'a pas été confirmé."
-    )
+    # No repetitive, unhelpful language-detection warning after valid facts.
+    return verified_section

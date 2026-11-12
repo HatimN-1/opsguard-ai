@@ -1,0 +1,90 @@
+/* OpsGuard AI — Northstar operations portal, light edition.
+   Presentation only. No hidden state, background requests, or data mutation. */
+:root {
+  --og-ink: #15273e;
+  --og-secondary: #5e7187;
+  --og-border: #dbe5ed;
+  --og-accent: #086e7f;
+  --og-soft: #edf7f9;
+  --og-white: #fff;
+}
+.stApp { background: #f5f8fb; color: var(--og-ink); }
+[data-testid="stHeader"] { background: rgba(245,248,251,.96) !important; }
+[data-testid="stSidebar"] {
+  background: #ffffff !important;
+  border-right: 1px solid #dce7ef !important;
+}
+[data-testid="stSidebar"] * { color: var(--og-ink); }
+[data-testid="stMainBlockContainer"], .block-container {
+  max-width: 1580px !important;
+  width: 100% !important;
+  padding: 2rem clamp(1rem, 2.8vw, 2.5rem) 3.5rem !important;
+}
+.og-brand-wrap { display: flex; gap: .8rem; align-items: center; padding:.15rem 0 .3rem; }
+.og-brand-mark { width: 38px; height: 38px; display: block; flex-shrink: 0; }
+.og-brand { font-size: 1.2rem; font-weight: 800; letter-spacing: -.035em; color: #10263d; line-height: 1.2; }
+.og-brand-sub { font-size: .69rem; color: #75869b; letter-spacing: .085em; margin-top:.2rem; font-weight:650; }
+.og-environment {
+  background: #f1f7fa; border: 1px solid #dce9f0; border-radius: 12px;
+  padding: .8rem .9rem; margin-top:.25rem; font-size: .79rem;
+  color: #33526d; line-height: 1.55;
+}
+.og-environment strong { color: #1e465c; font-size: .8rem; }
+.og-eyebrow { font-size:.72rem; letter-spacing:.13em; color:#0c7283; font-weight:800; margin:0 0 .7rem; }
+.og-hero {
+  padding:2rem 2.35rem; border:1px solid #d7e5ed; border-radius: 20px;
+  background: linear-gradient(110deg,#ffffff 7%,#eef9fa 100%);
+  box-shadow:0 8px 24px rgba(37,69,89,.045); margin-bottom:1.2rem;
+}
+.og-hero h1 { margin:.1rem 0 .75rem; font-size:clamp(1.8rem,2.3vw,2.35rem);
+  font-weight:800; letter-spacing:-.045em; color:#112842; line-height:1.18; }
+.og-hero p { margin:0; color:#526c83; max-width:1050px; font-size:1rem; line-height:1.6; }
+.og-kpi {
+  background:var(--og-white); padding:1.15rem 1.25rem;
+  border:1px solid #d9e4ed; border-radius: 15px; min-height:131px;
+  box-shadow:0 4px 13px rgba(30,61,83,.035);
+}
+.og-kpi-label {font-size:.8rem; color:#617589; margin-bottom:.48rem; font-weight:600;}
+.og-kpi-value {font-size:2.25rem; font-weight:820; color:#15324b; letter-spacing:-.06em; line-height:1;}
+.og-kpi-foot {font-size:.73rem; color:#08727e; margin-top:.6rem;}
+.og-section {font-size:1.12rem; font-weight:750; color:#19364e; border-left:3px solid #16899a;
+  padding-left:.75rem; margin:1.45rem 0 .85rem;}
+.og-note {padding:.9rem 1rem; background:#f1f6fa; border:1px solid #dbe5ed;
+  border-radius:11px; color:#506a7e; font-size:.84rem; line-height:1.55;}
+.og-safe {padding:.9rem 1rem; background:#eff8f5; border:1px solid #cce6dc;
+  border-radius:11px; color:#275e52; font-size:.85rem;}
+.og-warning {padding:.9rem 1rem; background:#fff9ea; border:1px solid #eadfb7;
+  border-radius:11px; color:#7b601d;}
+[data-testid="stMetric"] {background:#fff; border:1px solid #dbe5ed; border-radius:13px; padding:.95rem;}
+[data-testid="stMetricValue"] {color:#1a3853;}
+[data-testid="stDataFrame"] {border:1px solid #dae5ee; border-radius:13px; overflow:hidden;}
+[data-testid="stSidebar"] .stButton { margin-bottom:.28rem; }
+[data-testid="stSidebar"] .stButton button {
+  width:100%; justify-content:flex-start; text-align:left; padding:.58rem .8rem;
+  border-radius:10px; box-shadow:none; font-size:.86rem;
+}
+[data-testid="stSidebar"] .stButton button[kind="secondary"] {
+  background:transparent; color:#345268; border:1px solid transparent;
+}
+[data-testid="stSidebar"] .stButton button[kind="secondary"]:hover {
+  background:#eff7f9; border-color:#e0ebf0;
+}
+[data-testid="stSidebar"] .stButton button[kind="primary"] {
+  background:#e9f5f6 !important; color:#0d5a69 !important;
+  border:1px solid #cbe7e9 !important; font-weight:750;
+}
+[data-testid="stSidebar"] .stButton button[kind="primary"]:hover {
+  background:#e1f0f2 !important;
+}
+.stButton > button[kind="primary"] {
+  background:#0d7284 !important; color:#fff !important;
+  border:1px solid #0c7282 !important; border-radius:10px; font-weight:700;
+}
+.stButton > button[kind="primary"]:hover {background:#0b5e6d !important;}
+@media (max-width: 1000px) {
+  [data-testid="stMainBlockContainer"], .block-container { padding:1.25rem .8rem 2.5rem !important; }
+  .og-hero {padding:1.25rem !important; border-radius:15px;}
+  .og-hero h1 {font-size:1.7rem !important;}
+  .og-kpi {min-height:107px !important; padding:.85rem !important;}
+  .og-kpi-value {font-size:1.8rem !important;}
+}

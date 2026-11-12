@@ -1,0 +1,40 @@
+
+name: Enterprise ADF quality gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fixed-company-evaluation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install project dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip install -r requirements-dashboard.txt
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Unit and integration tests
+        run: python -m pytest -q
+
+      - name: Fixed company quality gates
+        run: python -m scripts.evaluate_enterprise_adf --check
+
+      - name: Annotated evidence/retrieval benchmark (offline, no Ollama)
+        run: python -m scripts.evaluate_enterprise_llm --check
+
+      - name: Dependencies
+        run: python -m pip check

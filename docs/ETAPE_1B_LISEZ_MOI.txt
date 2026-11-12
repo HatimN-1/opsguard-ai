@@ -1,0 +1,38 @@
+OpsGuard AI — Etape 1B : audit qualitatif des traces RECENTES
+
+INSTALLATION (depuis la racine opsguard-ai)
+  Expand-Archive -Path ".\OpsGuard_AI_Etape1B_Audit_Qualite_Traces.zip" -DestinationPath "." -Force
+
+PRE-REQUIS
+  Le script de l'etape precedente verify_fresh_trace_readonly.py --mark
+  a cree outputs/fresh_trace_probe_marker.json (1643 lignes dans votre cas).
+  NE PAS REFAIRE --mark pour auditer la trace deja produite.
+
+EXECUTION (pas besoin de relancer Qwen3)
+  python .\scripts\audit_fresh_trace_quality_readonly.py
+  $code = $LASTEXITCODE
+  Write-Host "Code retour audit = $code"
+  python -m pytest -q tests/test_audit_fresh_trace_quality.py
+  python -m ruff check scripts/audit_fresh_trace_quality_readonly.py tests/test_audit_fresh_trace_quality.py
+
+SI UN FICHIER EST ABSENT
+  python .\scripts\verify_fresh_trace_readonly.py --check
+  Verifiez que vous etes dans opsguard-ai et que le marqueur existe.
+
+INTERPRETATION
+  0 PASS / PASS_WITH_WARNINGS : aucun ecart bloquant sur les traces nouvelles.
+  1 FAIL : categorie d'erreur affichee, ne modifiez pas les logs.
+  2 INCONCLUSIVE : absence de donnees ou verification impossible.
+
+CHAMPS VERIFIES
+  Pairage TOOL_REQUESTED et TOOL_COMPLETED par nom, identifiants uniques,
+  timestamps valides et ordonnes, coherences event_count/tool_call_count,
+  durees positives et plausibles, provenance de selection, statut des outils,
+  recherche de noms de champs sensibles ou secrets apparents.
+
+IMPORTANT
+  C'est un audit heuristique des metadonnees, pas une preuve absolue de
+  confidentialite, d'exactitude des durees, ni une verification des causes
+  racines des incidents. L'audit ne modifie ni le code métier ni les traces.
+  Le JSON produit ne contient ni prompts, ni reponses, ni Run IDs,
+  ni valeurs d'arguments d'outil.

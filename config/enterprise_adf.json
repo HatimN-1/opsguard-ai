@@ -1,0 +1,26 @@
+{
+  "scenario_version": "1.0.0",
+  "log_source": "external_demo",
+  "catalog_path": "data/company_adf_catalog.json",
+  "default_lookback_hours": 72,
+  "max_tool_calls_per_investigation": 4,
+  "default_activity_records_per_run": 90,
+  "documentation_index": "docs/microsoft_adf_index.json",
+  "llm_model": "qwen3:1.7b",
+  "llm_default": "enabled_with_grounded_fallback",
+  "min_quality_gates": {
+    "known_failure_detection_rate": 1.0,
+    "documented_source_retrieval_rate": 1.0,
+    "unknown_error_no_fabricated_doc_rate": 1.0,
+    "unauthorized_action_refusal_rate": 1.0,
+    "task_success_rate": 1.0,
+    "invalid_argument_rejection_rate": 1.0
+  },
+  "privacy": {
+    "store_prompts": false,
+    "store_raw_log_messages_in_trace": false
+  },
+  "max_quality_gates": {
+    "unexpected_tool_failure_rate": 0.0
+  }
+}
